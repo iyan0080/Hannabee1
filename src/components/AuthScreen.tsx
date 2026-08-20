@@ -341,9 +341,22 @@ export const AuthScreen: React.FC = () => {
           <div className="px-6 sm:px-8 pb-7 pt-2 border-t border-slate-100 bg-slate-50/50">
             <p className="text-[11px] font-semibold text-slate-500 mb-2.5 flex items-center gap-1.5">
               <Sparkles size={13} className="text-amber-500" />
-              <span>Akses Cepat (Akun Terdaftar):</span>
+              <span>Akses Cepat (Pilih Akun Masuk):</span>
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                type="button"
+                id="quick-login-hanna"
+                onClick={() => handleQuickLogin('hanna.hannabee@gmail.com', 'hanna123')}
+                className="p-2.5 bg-white border border-slate-200 hover:border-amber-400 hover:bg-amber-50/40 rounded-xl text-left transition text-xs shadow-2xs group"
+              >
+                <div className="font-bold text-slate-800 flex items-center justify-between">
+                  <span className="text-amber-700">Hanna (Owner)</span>
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono truncate">hanna.hannabee@gmail.com</div>
+                <div className="text-[10px] text-amber-600 font-medium mt-1">Klik Masuk →</div>
+              </button>
+
               <button
                 type="button"
                 id="quick-login-iyan"
@@ -351,23 +364,23 @@ export const AuthScreen: React.FC = () => {
                 className="p-2.5 bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 rounded-xl text-left transition text-xs shadow-2xs group"
               >
                 <div className="font-bold text-slate-800 flex items-center justify-between">
-                  <span>Iyan (Owner)</span>
-                  <span className="text-[10px] text-blue-600 font-normal">Klik Masuk</span>
+                  <span className="text-blue-700">IYAN (Admin 1)</span>
                 </div>
-                <div className="text-[11px] text-slate-400 font-mono">iyan0080@gmail.com</div>
+                <div className="text-[10px] text-slate-400 font-mono truncate">iyan0080@gmail.com</div>
+                <div className="text-[10px] text-blue-600 font-medium mt-1">Klik Masuk →</div>
               </button>
 
               <button
                 type="button"
-                id="quick-login-kasir"
-                onClick={() => handleQuickLogin('kasir.hannabee@gmail.com', 'hannabee123')}
+                id="quick-login-nirma"
+                onClick={() => handleQuickLogin('nirma.hannabee@gmail.com', 'nirma123')}
                 className="p-2.5 bg-white border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/40 rounded-xl text-left transition text-xs shadow-2xs group"
               >
                 <div className="font-bold text-slate-800 flex items-center justify-between">
-                  <span>Kasir HannaBee</span>
-                  <span className="text-[10px] text-emerald-600 font-normal">Klik Masuk</span>
+                  <span className="text-emerald-700">NIRMA (Admin 2)</span>
                 </div>
-                <div className="text-[11px] text-slate-400 font-mono">kasir.hannabee@gmail.com</div>
+                <div className="text-[10px] text-slate-400 font-mono truncate">nirma.hannabee@gmail.com</div>
+                <div className="text-[10px] text-emerald-600 font-medium mt-1">Klik Masuk →</div>
               </button>
             </div>
           </div>

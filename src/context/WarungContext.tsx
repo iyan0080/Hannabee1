@@ -147,29 +147,24 @@ interface WarungContextType {
 const WarungContext = createContext<WarungContextType | undefined>(undefined);
 
 const STORAGE_KEYS = {
-  USERS: 'warung_users_v2',
-  CURRENT_USER: 'warung_current_user_v2',
+  USERS: 'warung_users_v3',
+  CURRENT_USER: 'warung_current_user_v3',
   PRODUCTS: 'warung_products_v2',
   TRANSACTIONS: 'warung_transactions_v2',
   EXPENSES: 'warung_expenses_v2',
   CUSTOMERS: 'warung_customers_v2',
-  SETTINGS: 'warung_settings_v2',
+  SETTINGS: 'warung_settings_v3',
   MANUAL_JOURNALS: 'warung_manual_journals_v2',
   CASH_CLOSINGS: 'warung_cash_closings_v2',
 };
 
-// Clean legacy demo v1 keys on load
+// Clean legacy demo keys on load
 try {
   [
     'warung_users_v1',
     'warung_current_user_v1',
-    'warung_products_v1',
-    'warung_transactions_v1',
-    'warung_expenses_v1',
-    'warung_customers_v1',
-    'warung_settings_v1',
-    'warung_manual_journals_v1',
-    'warung_cash_closings_v1',
+    'warung_users_v2',
+    'warung_current_user_v2',
   ].forEach(k => localStorage.removeItem(k));
 } catch {
   // ignore

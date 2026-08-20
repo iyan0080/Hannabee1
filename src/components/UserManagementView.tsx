@@ -48,6 +48,7 @@ export const UserManagementView: React.FC = () => {
   const [addEmail, setAddEmail] = useState('');
   const [addPassword, setAddPassword] = useState('');
   const [addPhone, setAddPhone] = useState('');
+  const [addRole, setAddRole] = useState('Kasir');
   const [addIsActive, setAddIsActive] = useState(true);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
@@ -55,7 +56,12 @@ export const UserManagementView: React.FC = () => {
   // Filtered Users
   const filteredUsers = users.filter(u => {
     const q = searchQuery.toLowerCase();
-    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.phone && u.phone.includes(q));
+    return (
+      u.name.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q) ||
+      (u.role && u.role.toLowerCase().includes(q)) ||
+      (u.phone && u.phone.includes(q))
+    );
   });
 
   // Handle Add User
@@ -80,7 +86,7 @@ export const UserManagementView: React.FC = () => {
       email: cleanEmail,
       password: addPassword.trim(),
       phone: addPhone.trim(),
-      role: 'Pengguna Warung',
+      role: addRole.trim() || 'Kasir',
       isActive: addIsActive,
     });
 
@@ -92,6 +98,7 @@ export const UserManagementView: React.FC = () => {
       setAddEmail('');
       setAddPassword('');
       setAddPhone('');
+      setAddRole('Kasir');
     }
   };
 
@@ -111,6 +118,7 @@ export const UserManagementView: React.FC = () => {
       name: editingUser.name.trim(),
       email: cleanEmail,
       phone: editingUser.phone?.trim(),
+      role: editingUser.role?.trim() || 'Kasir',
       isActive: editingUser.isActive,
     });
 
@@ -292,9 +300,22 @@ export const UserManagementView: React.FC = () => {
                     </div>
                   )}
 
-                  <div className="flex items-center gap-2 text-slate-500">
-                    <Shield size={13} className="text-blue-500" />
-                    <span>Peran: <strong className="text-slate-700">{user.role}</strong></span>
+                  <div className="flex items-center gap-2 text-xs">
+                    <Shield size={13} className="text-blue-500 shrink-0" />
+                    <span className="text-slate-500">Peran:</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-bold inline-flex items-center gap-1 border ${
+                        user.role === 'Owner'
+                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                          : user.role === 'Admin 1'
+                          ? 'bg-blue-100 text-blue-900 border-blue-300'
+                          : user.role === 'Admin 2'
+                          ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                          : 'bg-slate-100 text-slate-800 border-slate-200'
+                      }`}
+                    >
+                      {user.role}
+                    </span>
                   </div>
 
                   <div className="flex items-center gap-2 text-slate-400 text-[11px]">
@@ -427,6 +448,36 @@ export const UserManagementView: React.FC = () => {
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Peran / Jabatan Akses <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Owner, Admin 1, Admin 2, Kasir"
+                  value={addRole}
+                  onChange={e => setAddRole(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {['Owner', 'Admin 1', 'Admin 2', 'Kasir', 'Staf'].map(roleOption => (
+                    <button
+                      key={roleOption}
+                      type="button"
+                      onClick={() => setAddRole(roleOption)}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition ${
+                        addRole === roleOption
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                      }`}
+                    >
+                      {roleOption}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="flex items-center gap-2 pt-1">
                 <input
                   id="add-is-active"
@@ -523,6 +574,36 @@ export const UserManagementView: React.FC = () => {
                   onChange={e => setEditingUser({ ...editingUser, phone: e.target.value })}
                   className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Peran / Jabatan Akses <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Owner, Admin 1, Admin 2, Kasir"
+                  value={editingUser.role || ''}
+                  onChange={e => setEditingUser({ ...editingUser, role: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {['Owner', 'Admin 1', 'Admin 2', 'Kasir', 'Staf'].map(roleOption => (
+                    <button
+                      key={roleOption}
+                      type="button"
+                      onClick={() => setEditingUser({ ...editingUser, role: roleOption })}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition ${
+                        editingUser.role === roleOption
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                      }`}
+                    >
+                      {roleOption}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="flex items-center gap-2 pt-1">
