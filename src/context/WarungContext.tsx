@@ -132,6 +132,8 @@ interface WarungContextType {
   deleteCustomer: (id: string) => void;
   settleCustomerDebt: (customerId: string, amount: number, notes?: string) => void;
   topUpCustomerDeposit: (customerId: string, amount: number, paymentMethod?: 'TUNAI' | 'TRANSFER' | 'QRIS', notes?: string) => void;
+  clearCustomerDeposit: (customerId: string, reason?: string) => void;
+  clearAllResellerDeposits: () => void;
 
   // Store Settings & Cloud Sync
   updateStoreSettings: (settings: Partial<StoreSettings>) => void;
@@ -200,7 +202,17 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const [customers, setCustomers] = useState<Customer[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-    return saved ? JSON.parse(saved) : INITIAL_CUSTOMERS;
+    if (!saved) return INITIAL_CUSTOMERS;
+    try {
+      const parsed: Customer[] = JSON.parse(saved);
+      return parsed.map(c =>
+        c.customerType === 'RESELLER' && (c.depositBalance || 0) > 0
+          ? { ...c, depositBalance: 0 }
+          : c
+      );
+    } catch {
+      return INITIAL_CUSTOMERS;
+    }
   });
 
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => {
@@ -1002,6 +1014,58 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     );
   }, []);
 
+  const clearCustomerDeposit = useCallback((customerId: string, reason?: string) => {
+    setCustomers(prev =>
+      prev.map(c => {
+        if (c.id === customerId) {
+          const currentBal = c.depositBalance || 0;
+          const record: DepositRecord = {
+            id: 'dep-' + Date.now(),
+            timestamp: new Date().toISOString(),
+            type: 'WITHDRAWAL',
+            amount: currentBal,
+            notes: reason || 'Penghapusan / Penarikan Saldo Deposit',
+            remainingBalance: 0,
+          };
+          const updatedCust: Customer = {
+            ...c,
+            depositBalance: 0,
+            depositHistory: currentBal > 0 ? [record, ...(c.depositHistory || [])] : (c.depositHistory || []),
+          };
+          saveCustomerToFirestore(updatedCust);
+          return updatedCust;
+        }
+        return c;
+      })
+    );
+  }, []);
+
+  const clearAllResellerDeposits = useCallback(() => {
+    setCustomers(prev =>
+      prev.map(c => {
+        if (c.customerType === 'RESELLER' && (c.depositBalance || 0) > 0) {
+          const currentBal = c.depositBalance || 0;
+          const record: DepositRecord = {
+            id: 'dep-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+            timestamp: new Date().toISOString(),
+            type: 'WITHDRAWAL',
+            amount: currentBal,
+            notes: 'Penghapusan Saldo Deposit Reseller',
+            remainingBalance: 0,
+          };
+          const updatedCust: Customer = {
+            ...c,
+            depositBalance: 0,
+            depositHistory: [record, ...(c.depositHistory || [])],
+          };
+          saveCustomerToFirestore(updatedCust);
+          return updatedCust;
+        }
+        return c;
+      })
+    );
+  }, []);
+
   const settleCustomerDebt = useCallback((customerId: string, amount: number, notes?: string) => {
     setCustomers(prev =>
       prev.map(c => {
@@ -1594,6 +1658,8 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         deleteCustomer,
         settleCustomerDebt,
         topUpCustomerDeposit,
+        clearCustomerDeposit,
+        clearAllResellerDeposits,
         updateStoreSettings,
         syncWithCloud,
         clearAllDatabase,
