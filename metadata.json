@@ -1,0 +1,6 @@
+{
+  "name": "HannaBee POS & Pembukuan",
+  "description": "Aplikasi kasir POS dan pembukuan HannaBee lengkap dengan sistem login Gmail & password, manajemen pengguna dengan hak akses setara, saldo deposit pelanggan, pencatatan kasbon otomatis, laporan laba rugi, cetak PDF/Excel, varian menu, struk WhatsApp, dan sinkronisasi data cloud multi-perangkat.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

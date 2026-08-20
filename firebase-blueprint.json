@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Daftar produk makanan, minuman, dan varian",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "price": { "type": "number" },
+        "costPrice": { "type": "number" },
+        "stock": { "type": "number" },
+        "unlimitedStock": { "type": "boolean" },
+        "image": { "type": "string" },
+        "isFavorite": { "type": "boolean" },
+        "hasVariants": { "type": "boolean" },
+        "variants": { "type": "array" }
+      },
+      "required": ["id", "name", "price"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Riwayat transaksi penjualan kasir",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "receiptNumber": { "type": "string" },
+        "items": { "type": "array" },
+        "total": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "receiptNumber", "total", "paymentMethod"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Catatan beban pengeluaran operasional warung",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["id", "amount", "date"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Data pelanggan setia, kasbon, dan deposit saldo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "balance": { "type": "number" },
+        "deposit": { "type": "number" }
+      },
+      "required": ["id", "name"]
+    },
+    "ManualJournalEntry": {
+      "title": "ManualJournalEntry",
+      "description": "Buku kas mutasi manual (modal, prive, transfer kas)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" }
+      },
+      "required": ["id", "amount", "type"]
+    },
+    "CashClosingRecord": {
+      "title": "CashClosingRecord",
+      "description": "Rekonsiliasi tutup kas dan opname laci harian",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "systemExpectedCash": { "type": "number" },
+        "actualPhysicalCash": { "type": "number" }
+      },
+      "required": ["id", "date"]
+    },
+    "StoreSettings": {
+      "title": "StoreSettings",
+      "description": "Konfigurasi toko dan struk",
+      "type": "object",
+      "properties": {
+        "storeName": { "type": "string" },
+        "phone": { "type": "string" },
+        "cashierName": { "type": "string" }
+      },
+      "required": ["storeName"]
+    }
+  },
+  "firestore": {
+    "products": { "entity": "Product", "description": "Koleksi produk" },
+    "transactions": { "entity": "Transaction", "description": "Koleksi transaksi" },
+    "expenses": { "entity": "Expense", "description": "Koleksi pengeluaran" },
+    "customers": { "entity": "Customer", "description": "Koleksi pelanggan" },
+    "manual_journals": { "entity": "ManualJournalEntry", "description": "Koleksi mutasi kas" },
+    "cash_closings": { "entity": "CashClosingRecord", "description": "Koleksi tutup kas" },
+    "store_settings": { "entity": "StoreSettings", "description": "Pengaturan toko" },
+    "users": { "entity": "Customer", "description": "Koleksi pengguna" }
+  }
+}
