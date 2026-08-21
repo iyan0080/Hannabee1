@@ -1,8 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useWarung } from '../context/WarungContext';
-import { Product, ProductCategory, ProductVariant, PaymentMethod, Customer, Transaction, CustomerType, DiscountType } from '../types';
+import { Product, ProductCategory, ProductVariant, PaymentMethod, Customer, Transaction, CustomerType, DiscountType, CartItem } from '../types';
 import { formatRupiah } from '../utils/format';
 import { ReceiptModal } from './ReceiptModal';
+import { CashCalculatorModal } from './CashCalculatorModal';
+import { ItemDiscountModal } from './ItemDiscountModal';
+import { calculateSmartCashSuggestions } from '../utils/cashSuggestions';
 import confetti from 'canvas-confetti';
 import {
   Search,
@@ -30,6 +33,8 @@ import {
   Store,
   Tag,
   ShieldCheck,
+  Calculator,
+  Coins,
 } from 'lucide-react';
 
 const CATEGORIES: ('Semua' | ProductCategory)[] = [
@@ -59,6 +64,7 @@ export const POSView: React.FC = () => {
     addToCart,
     updateCartItemQuantity,
     setCartItemQuantity,
+    setCartItemDiscount,
     removeFromCart,
     clearCart,
     setSelectedCustomer,
@@ -95,6 +101,12 @@ export const POSView: React.FC = () => {
 
   // Completed Receipt Modal State
   const [completedTransaction, setCompletedTransaction] = useState<Transaction | null>(null);
+
+  // Cash Calculator Modal State
+  const [showCashCalcModal, setShowCashCalcModal] = useState(false);
+
+  // Item Discount Modal State
+  const [discountModalItem, setDiscountModalItem] = useState<CartItem | null>(null);
 
   // Filtered Products (Exclude archived products)
   const filteredProducts = useMemo(() => {
@@ -141,26 +153,16 @@ export const POSView: React.FC = () => {
     }
   };
 
-  // Quick Cash Buttons calculations
-  const fastCashAmounts = useMemo(() => {
-    const amounts = [cartFinalTotal];
-    const roundedUp10k = Math.ceil(cartFinalTotal / 10000) * 10000;
-    const roundedUp20k = Math.ceil(cartFinalTotal / 20000) * 20000;
-    const roundedUp50k = Math.ceil(cartFinalTotal / 50000) * 50000;
-    const roundedUp100k = Math.ceil(cartFinalTotal / 100000) * 100000;
-
-    [roundedUp10k, roundedUp20k, roundedUp50k, roundedUp100k, 50000, 100000].forEach(amt => {
-      if (amt >= cartFinalTotal && !amounts.includes(amt) && amt > 0) {
-        amounts.push(amt);
-      }
-    });
-
-    return amounts.sort((a, b) => a - b).slice(0, 5);
+  // Smart Cash Suggestions (Indonesian customer cash habits)
+  const smartCashSuggestions = useMemo(() => {
+    return calculateSmartCashSuggestions(cartFinalTotal);
   }, [cartFinalTotal]);
 
   // Handle Fast Checkout
-  const handleCheckout = () => {
+  const handleCheckout = (customCashAmount?: number) => {
     if (cart.length === 0) return;
+
+    const finalCash = customCashAmount !== undefined ? customCashAmount : cashGiven;
 
     if (paymentMethod === 'KASBON' && !selectedCustomer) {
       alert('Untuk metode KASBON (Hutang), silakan pilih data Pelanggan terlebih dahulu agar tercatat rapi.');
@@ -183,9 +185,13 @@ export const POSView: React.FC = () => {
       }
     }
 
-    if (paymentMethod === 'TUNAI' && cashGiven < cartFinalTotal) {
-      alert(`Uang tunai yang diterima (${formatRupiah(cashGiven)}) kurang dari total belanja (${formatRupiah(cartFinalTotal)}).`);
+    if (paymentMethod === 'TUNAI' && finalCash < cartFinalTotal) {
+      alert(`Uang tunai yang diterima (${formatRupiah(finalCash)}) kurang dari total belanja (${formatRupiah(cartFinalTotal)}).`);
       return;
+    }
+
+    if (customCashAmount !== undefined) {
+      setCashGiven(customCashAmount);
     }
 
     const trx = processCheckout();
@@ -197,6 +203,13 @@ export const POSView: React.FC = () => {
       });
       setCompletedTransaction(trx);
       clearCart();
+    }
+  };
+
+  const handleApplyCashFromCalc = (amount: number, andProcessCheckout?: boolean) => {
+    setCashGiven(amount);
+    if (andProcessCheckout) {
+      handleCheckout(amount);
     }
   };
 
@@ -517,73 +530,134 @@ export const POSView: React.FC = () => {
                   <p className="text-[11px] text-slate-400">Pilih menu di samping untuk mulai transaksi</p>
                 </div>
               ) : (
-                cart.map(item => (
-                  <div key={item.id} className="pt-2 first:pt-0">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 pr-2">
-                        <h5 className="font-semibold text-xs text-slate-900">{item.productName}</h5>
-                        {item.selectedVariants.length > 0 && (
-                          <p className="text-[11px] text-emerald-700">
-                            + {item.selectedVariants.map(v => `${v.name} (${formatRupiah(v.priceAdjustment)})`).join(', ')}
-                          </p>
-                        )}
-                        {item.notes && (
-                          <p className="text-[10px] text-slate-400 italic">Catatan: {item.notes}</p>
-                        )}
-                        <span className="text-xs text-slate-600 font-mono">
-                          {formatRupiah(item.finalPricePerUnit)} / unit
-                        </span>
+                cart.map(item => {
+                  const grossItemTotal = item.finalPricePerUnit * item.quantity;
+                  const hasItemDiscount = (item.discountAmount || 0) > 0;
+
+                  return (
+                    <div key={item.id} className="pt-2.5 pb-2 first:pt-0 border-b border-slate-100 last:border-b-0 space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0 pr-1">
+                          <h5 className="font-semibold text-xs text-slate-900 leading-tight">{item.productName}</h5>
+                          {item.selectedVariants.length > 0 && (
+                            <p className="text-[11px] text-emerald-700">
+                              + {item.selectedVariants.map(v => `${v.name} (${formatRupiah(v.priceAdjustment)})`).join(', ')}
+                            </p>
+                          )}
+                          {item.notes && (
+                            <p className="text-[10px] text-slate-400 italic">Catatan: {item.notes}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[11px] text-slate-500 font-mono">
+                              {formatRupiah(item.finalPricePerUnit)} / unit
+                            </span>
+                          </div>
+
+                          {/* Item Discount Badge or Add Discount Button */}
+                          <div className="mt-1.5">
+                            {hasItemDiscount ? (
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setDiscountModalItem(item)}
+                                  className="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold flex items-center gap-1 transition shadow-2xs"
+                                  title="Klik untuk ubah diskon item"
+                                >
+                                  <Tag size={10} className="text-emerald-600" />
+                                  <span>
+                                    {item.discountType === 'PERCENTAGE'
+                                      ? `Diskon ${item.discountValue}%`
+                                      : `Diskon ${formatRupiah(item.discountValue || 0)}`}
+                                    {' '}(-{formatRupiah(item.discountAmount || 0)})
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setCartItemDiscount(item.id, undefined, undefined)}
+                                  className="w-4 h-4 rounded-full bg-slate-200 hover:bg-red-100 hover:text-red-600 text-slate-500 flex items-center justify-center text-[10px] transition"
+                                  title="Hapus diskon item ini"
+                                >
+                                  <X size={10} />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setDiscountModalItem(item)}
+                                className="text-[10px] text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-1.5 py-0.5 rounded border border-dashed border-blue-200 flex items-center gap-1 font-medium transition active:scale-95"
+                                title="Beri diskon khusus untuk item ini (% atau Rp)"
+                              >
+                                <Tag size={10} />
+                                <span>+ Diskon Item</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="text-right shrink-0">
+                          {hasItemDiscount ? (
+                            <>
+                              <span className="line-through text-slate-400 text-[10px] block font-mono">
+                                {formatRupiah(grossItemTotal)}
+                              </span>
+                              <span className="font-bold text-xs text-emerald-700 block font-mono">
+                                {formatRupiah(item.subtotal)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="font-bold text-xs text-slate-900 block font-mono">
+                              {formatRupiah(item.subtotal)}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      
-                      <div className="text-right">
-                        <span className="font-bold text-xs text-slate-900 block font-mono">
-                          {formatRupiah(item.subtotal)}
-                        </span>
+
+                      {/* Quantity adjust & direct typing */}
+                      <div className="flex items-center justify-between pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => removeFromCart(item.id)}
+                          className="text-[11px] text-red-500 hover:text-red-700 flex items-center gap-0.5 font-medium"
+                        >
+                          <Trash2 size={12} /> Hapus
+                        </button>
+
+                        <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => updateCartItemQuantity(item.id, -1)}
+                            className="w-6 h-6 rounded bg-white text-slate-700 hover:bg-slate-200 flex items-center justify-center font-bold text-xs shadow-2xs active:scale-95 transition"
+                            title="Kurangi 1"
+                          >
+                            <Minus size={12} />
+                          </button>
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={e => {
+                              const val = parseInt(e.target.value, 10);
+                              if (!isNaN(val) && val > 0) {
+                                setCartItemQuantity(item.id, val);
+                              }
+                            }}
+                            onFocus={e => e.target.select()}
+                            className="w-12 h-6 text-center font-bold text-xs text-slate-900 bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                            title="Ketik jumlah pesanan langsung"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateCartItemQuantity(item.id, 1)}
+                            className="w-6 h-6 rounded bg-white text-slate-700 hover:bg-slate-200 flex items-center justify-center font-bold text-xs shadow-2xs active:scale-95 transition"
+                            title="Tambah 1"
+                          >
+                            <Plus size={12} />
+                          </button>
+                        </div>
                       </div>
                     </div>
-
-                    {/* Quantity adjust & direct typing */}
-                    <div className="flex items-center justify-between mt-1.5">
-                      <button
-                        onClick={() => removeFromCart(item.id)}
-                        className="text-[11px] text-red-500 hover:text-red-700 flex items-center gap-0.5"
-                      >
-                        <Trash2 size={12} /> Hapus
-                      </button>
-
-                      <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
-                        <button
-                          onClick={() => updateCartItemQuantity(item.id, -1)}
-                          className="w-6 h-6 rounded bg-white text-slate-700 hover:bg-slate-200 flex items-center justify-center font-bold text-xs shadow-2xs active:scale-95 transition"
-                          title="Kurangi 1"
-                        >
-                          <Minus size={12} />
-                        </button>
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={e => {
-                            const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val) && val > 0) {
-                              setCartItemQuantity(item.id, val);
-                            }
-                          }}
-                          onFocus={e => e.target.select()}
-                          className="w-12 h-6 text-center font-bold text-xs text-slate-900 bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                          title="Ketik jumlah pesanan langsung"
-                        />
-                        <button
-                          onClick={() => updateCartItemQuantity(item.id, 1)}
-                          className="w-6 h-6 rounded bg-white text-slate-700 hover:bg-slate-200 flex items-center justify-center font-bold text-xs shadow-2xs active:scale-95 transition"
-                          title="Tambah 1"
-                        >
-                          <Plus size={12} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
@@ -776,41 +850,102 @@ export const POSView: React.FC = () => {
 
                 {/* Tunai Cash input and fast pills */}
                 {paymentMethod === 'TUNAI' && (
-                  <div className="space-y-1.5 bg-blue-50/60 p-2.5 rounded-xl border border-blue-100">
+                  <div className="space-y-2 bg-blue-50/60 p-2.5 rounded-xl border border-blue-100 shadow-2xs">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium text-blue-900">Uang Diterima:</span>
-                      <input
-                        id="cash-given-input"
-                        type="number"
-                        min="0"
-                        step="1000"
-                        value={cashGiven || ''}
-                        onChange={e => setCashGiven(Number(e.target.value) || 0)}
-                        className="w-32 px-2 py-1 text-right bg-white border border-blue-300 rounded-lg text-xs font-bold text-blue-900 font-mono focus:ring-2 focus:ring-blue-500"
-                      />
+                      <span className="font-bold text-blue-950 flex items-center gap-1">
+                        <Banknote size={13} className="text-blue-700" />
+                        Uang Diterima:
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <div className="relative">
+                          <input
+                            id="cash-given-input"
+                            type="number"
+                            min="0"
+                            step="1000"
+                            value={cashGiven || ''}
+                            onChange={e => setCashGiven(Number(e.target.value) || 0)}
+                            placeholder="0"
+                            className="w-28 sm:w-32 px-2 py-1 text-right bg-white border border-blue-300 rounded-lg text-xs font-bold text-blue-900 font-mono focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          id="open-cash-calculator-btn"
+                          onClick={() => setShowCashCalcModal(true)}
+                          title="Buka Kalkulator Kasir & Uang Cepat"
+                          className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition active:scale-95 cursor-pointer"
+                        >
+                          <Calculator size={13} />
+                          <span className="text-[11px]">Kalkulator</span>
+                        </button>
+                      </div>
                     </div>
 
-                    {/* Fast cash pills */}
-                    <div className="flex flex-wrap gap-1">
-                      {fastCashAmounts.map(amt => (
+                    {/* Smart cash suggestions */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] text-blue-900 font-bold flex items-center gap-0.5">
+                          <Sparkles size={11} className="text-amber-500" />
+                          Saran Nominal Uang:
+                        </span>
                         <button
-                          key={amt}
-                          onClick={() => setCashGiven(amt)}
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition ${
-                            cashGiven === amt
-                              ? 'bg-blue-700 text-white'
-                              : 'bg-white text-blue-800 border border-blue-200 hover:bg-blue-100'
-                          }`}
+                          type="button"
+                          onClick={() => setShowCashCalcModal(true)}
+                          className="text-[10px] text-blue-700 hover:text-blue-900 underline font-medium"
                         >
-                          {amt === cartFinalTotal ? 'Uang Pas' : formatRupiah(amt)}
+                          Rincian Lembaran
                         </button>
-                      ))}
+                      </div>
+
+                      <div className="flex flex-wrap gap-1">
+                        {smartCashSuggestions.slice(0, 6).map((sug, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setCashGiven(sug.amount)}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition ${
+                              cashGiven === sug.amount
+                                ? 'bg-blue-700 text-white shadow-2xs'
+                                : 'bg-white text-blue-800 border border-blue-200 hover:bg-blue-100'
+                            }`}
+                            title={sug.sublabel ? `${sug.label} (${sug.sublabel})` : sug.label}
+                          >
+                            {sug.isExact ? '⭐ Pas' : sug.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+
+                    {/* Quick Add Physical Notes Buttons (+5rb, +10rb, +20rb, +50rb, +100rb) */}
+                    <div className="flex items-center gap-1 pt-0.5">
+                      <span className="text-[9px] text-slate-500 font-medium whitespace-nowrap">+Lembar:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {[5000, 10000, 20000, 50000, 100000].map(addAmt => (
+                          <button
+                            key={addAmt}
+                            type="button"
+                            onClick={() => setCashGiven(prev => (prev || 0) + addAmt)}
+                            className="px-1.5 py-0.5 rounded bg-white hover:bg-blue-100 text-blue-900 border border-blue-200 text-[9px] font-bold font-mono transition active:scale-95"
+                            title={`Tambah Rp ${addAmt.toLocaleString('id-ID')}`}
+                          >
+                            +{addAmt >= 1000 ? `${addAmt / 1000}rb` : addAmt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {cashGiven < cartFinalTotal && cashGiven > 0 && (
+                      <div className="flex justify-between text-xs pt-1 border-t border-red-200 text-red-600 font-semibold">
+                        <span>Uang Masih Kurang:</span>
+                        <span className="font-mono">-{formatRupiah(cartFinalTotal - cashGiven)}</span>
+                      </div>
+                    )}
 
                     {cashGiven >= cartFinalTotal && (
                       <div className="flex justify-between text-xs pt-1 border-t border-blue-200/60 text-blue-950 font-bold">
                         <span>Kembalian:</span>
-                        <span className="font-mono text-sm">{formatRupiah(changeAmount)}</span>
+                        <span className="font-mono text-sm text-emerald-700 font-bold">{formatRupiah(changeAmount)}</span>
                       </div>
                     )}
                   </div>
@@ -1253,6 +1388,29 @@ export const POSView: React.FC = () => {
           transaction={completedTransaction}
           storeSettings={storeSettings}
           onClose={() => setCompletedTransaction(null)}
+        />
+      )}
+
+      {/* 4. Cash Calculator Modal */}
+      {showCashCalcModal && (
+        <CashCalculatorModal
+          isOpen={showCashCalcModal}
+          onClose={() => setShowCashCalcModal(false)}
+          targetAmount={cartFinalTotal}
+          currentCashGiven={cashGiven}
+          onSelectAmount={handleApplyCashFromCalc}
+        />
+      )}
+
+      {/* 5. Item Discount Modal */}
+      {discountModalItem && (
+        <ItemDiscountModal
+          isOpen={!!discountModalItem}
+          item={discountModalItem}
+          onClose={() => setDiscountModalItem(null)}
+          onApplyDiscount={(id, type, value) => {
+            setCartItemDiscount(id, type, value);
+          }}
         />
       )}
     </div>

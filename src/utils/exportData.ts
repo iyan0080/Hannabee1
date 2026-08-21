@@ -18,10 +18,13 @@ export function exportTransactionsToExcel(transactions: Transaction[], store: St
     'Diskon': t.discount,
     'Pajak': t.tax,
     'Total Penjualan': t.finalAmount,
+    'Total Diretur': t.totalReturnedAmount || 0,
+    'Penjualan Bersih (Net)': t.status === 'BATAL' ? 0 : Math.max(0, t.finalAmount - (t.totalReturnedAmount || 0)),
     'Total HPP (Modal)': t.totalCost,
-    'Laba Kotor': t.grossProfit,
+    'Laba Kotor': t.status === 'BATAL' ? 0 : Math.max(0, t.grossProfit - (t.totalReturnedAmount || 0) + (t.totalReturnedCost || 0)),
     'Metode Pembayaran': t.paymentMethod,
-    'Status Pembayaran': t.status,
+    'Status Transaksi': t.status,
+    'Keterangan Batal / Retur': t.cancellationReason || (t.returnRecords ? t.returnRecords.map(r => `[${r.type}] ${r.reason}`).join(' | ') : '-'),
     'Kasir': t.cashierName,
   }));
 

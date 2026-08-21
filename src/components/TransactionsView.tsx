@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useWarung } from '../context/WarungContext';
-import { Transaction, PaymentMethod } from '../types';
+import { Transaction, PaymentMethod, TransactionStatus } from '../types';
 import { formatRupiah, formatDate, openWhatsApp, generateReceiptWhatsAppText } from '../utils/format';
 import { ReceiptModal } from './ReceiptModal';
+import { CancelReturnModal } from './CancelReturnModal';
 import { exportTransactionsToExcel, exportTransactionsToPDF } from '../utils/exportData';
 import {
   Search,
@@ -16,17 +17,24 @@ import {
   Calendar,
   X,
   CreditCard,
+  RotateCcw,
+  Ban,
+  Undo2,
+  Info,
 } from 'lucide-react';
 
 export const TransactionsView: React.FC = () => {
   const { transactions, storeSettings, settleCustomerDebt } = useWarung();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'LUNAS' | 'BELUM_LUNAS'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | TransactionStatus>('ALL');
   const [methodFilter, setMethodFilter] = useState<'ALL' | PaymentMethod>('ALL');
 
   // Receipt Modal
   const [selectedReceipt, setSelectedReceipt] = useState<Transaction | null>(null);
+
+  // Cancel & Return Modal
+  const [cancelReturnTrx, setCancelReturnTrx] = useState<Transaction | null>(null);
 
   // Settle Debt Modal
   const [settlingTrx, setSettlingTrx] = useState<Transaction | null>(null);
@@ -39,6 +47,8 @@ export const TransactionsView: React.FC = () => {
         t.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (t.customerName && t.customerName.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (t.customerPhone && t.customerPhone.includes(searchQuery)) ||
+        (t.cancellationReason && t.cancellationReason.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (t.returnRecords && t.returnRecords.some(r => r.reason.toLowerCase().includes(searchQuery.toLowerCase()))) ||
         t.items.some(i => i.productName.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchStatus = statusFilter === 'ALL' || t.status === statusFilter;
@@ -48,8 +58,15 @@ export const TransactionsView: React.FC = () => {
     });
   }, [transactions, searchQuery, statusFilter, methodFilter]);
 
-  const totalFilteredAmount = filteredTransactions.reduce((s, t) => s + t.finalAmount, 0);
-  const totalFilteredProfit = filteredTransactions.reduce((s, t) => s + t.grossProfit, 0);
+  const activeTransactions = filteredTransactions.filter(t => t.status !== 'BATAL');
+  const totalFilteredAmount = activeTransactions.reduce((s, t) => {
+    const net = t.status === 'DIRETUR_SEBAGIAN' ? Math.max(0, t.finalAmount - (t.totalReturnedAmount || 0)) : t.finalAmount;
+    return s + net;
+  }, 0);
+  const totalFilteredProfit = activeTransactions.reduce((s, t) => {
+    const netProfit = t.status === 'DIRETUR_SEBAGIAN' ? Math.max(0, t.grossProfit - (t.totalReturnedAmount || 0) + (t.totalReturnedCost || 0)) : t.grossProfit;
+    return s + netProfit;
+  }, 0);
 
   const handleSettleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,7 +98,7 @@ export const TransactionsView: React.FC = () => {
             </h2>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Total {filteredTransactions.length} transaksi ditampilkan ({formatRupiah(totalFilteredAmount)})
+            Total {filteredTransactions.length} transaksi ({formatRupiah(totalFilteredAmount)} omzet aktif)
           </p>
         </div>
 
@@ -116,7 +133,7 @@ export const TransactionsView: React.FC = () => {
             <input
               id="trx-search-input"
               type="text"
-              placeholder="Cari nota, pelanggan, no telp, menu..."
+              placeholder="Cari nota, pelanggan, alasan batal/retur, menu..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -128,11 +145,13 @@ export const TransactionsView: React.FC = () => {
             id="trx-status-filter"
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as any)}
-            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
           >
-            <option value="ALL">Semua Status Pembayaran</option>
-            <option value="LUNAS">✅ LUNAS Saja</option>
-            <option value="BELUM_LUNAS">⏳ BELUM LUNAS (KASBON)</option>
+            <option value="ALL">Semua Status Transaksi</option>
+            <option value="LUNAS">✅ Lunas Saja</option>
+            <option value="BELUM_LUNAS">⏳ Belum Lunas (Kasbon)</option>
+            <option value="DIRETUR_SEBAGIAN">🔄 Diretur Sebagian</option>
+            <option value="BATAL">❌ Dibatalkan</option>
           </select>
 
           {/* Payment Method Filter */}
@@ -140,7 +159,7 @@ export const TransactionsView: React.FC = () => {
             id="trx-method-filter"
             value={methodFilter}
             onChange={e => setMethodFilter(e.target.value as any)}
-            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
           >
             <option value="ALL">Semua Metode Pembayaran</option>
             <option value="TUNAI">💵 Tunai</option>
@@ -161,7 +180,7 @@ export const TransactionsView: React.FC = () => {
                 <th className="px-4 py-3">No. Nota & Waktu</th>
                 <th className="px-4 py-3">Pelanggan</th>
                 <th className="px-4 py-3">Item Menu / Varian</th>
-                <th className="px-4 py-3 text-right">Total Belanja</th>
+                <th className="px-4 py-3 text-right">Nilai Transaksi</th>
                 <th className="px-4 py-3 text-right">Laba Kotor</th>
                 <th className="px-4 py-3 text-center">Metode & Status</th>
                 <th className="px-4 py-3 text-center">Aksi</th>
@@ -170,11 +189,38 @@ export const TransactionsView: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredTransactions.map(trx => {
                 const isKasbon = trx.status === 'BELUM_LUNAS';
+                const isCancelled = trx.status === 'BATAL';
+                const isPartialReturn = trx.status === 'DIRETUR_SEBAGIAN';
+
                 return (
-                  <tr key={trx.id} className="hover:bg-slate-50 transition">
+                  <tr
+                    key={trx.id}
+                    className={`transition ${
+                      isCancelled ? 'bg-red-50/40 hover:bg-red-50/70' : isPartialReturn ? 'bg-indigo-50/30 hover:bg-indigo-50/50' : 'hover:bg-slate-50'
+                    }`}
+                  >
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="font-bold text-slate-900 font-mono">{trx.invoiceNumber}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`font-bold font-mono ${isCancelled ? 'text-red-700 line-through' : 'text-slate-900'}`}>
+                          {trx.invoiceNumber}
+                        </span>
+                        {isCancelled && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-100 text-red-700">
+                            BATAL
+                          </span>
+                        )}
+                        {isPartialReturn && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-800">
+                            RETUR
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[11px] text-slate-500">{formatDate(trx.timestamp)}</div>
+                      {trx.cancellationReason && (
+                        <div className="text-[10px] text-red-600 italic truncate max-w-[180px] mt-0.5" title={trx.cancellationReason}>
+                          Alasan: "{trx.cancellationReason}"
+                        </div>
+                      )}
                     </td>
 
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -192,21 +238,45 @@ export const TransactionsView: React.FC = () => {
                             {item.selectedVariants.length > 0 && (
                               <span className="text-[10px] text-slate-500"> ({item.selectedVariants.map(v => v.name).join(', ')})</span>
                             )}
+                            {item.discountAmount && item.discountAmount > 0 && (
+                              <span className="ml-1 text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
+                                Diskon -{formatRupiah(item.discountAmount)}
+                              </span>
+                            )}
                           </div>
                         ))}
                       </div>
                     </td>
 
                     <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <div className="font-bold text-slate-900 font-mono">{formatRupiah(trx.finalAmount)}</div>
+                      <div className={`font-bold font-mono ${isCancelled ? 'text-red-600 line-through' : 'text-slate-900'}`}>
+                        {formatRupiah(trx.finalAmount)}
+                      </div>
+                      {isPartialReturn && trx.totalReturnedAmount && trx.totalReturnedAmount > 0 && (
+                        <div className="text-[10px] text-indigo-700 font-medium">
+                          Diretur: -{formatRupiah(trx.totalReturnedAmount)}
+                        </div>
+                      )}
                       {trx.discount > 0 && (
                         <div className="text-[10px] text-red-500">Diskon: -{formatRupiah(trx.discount)}</div>
                       )}
                     </td>
 
                     <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <div className="font-semibold text-teal-700 font-mono">{formatRupiah(trx.grossProfit)}</div>
-                      <div className="text-[10px] text-slate-400">Modal: {formatRupiah(trx.totalCost)}</div>
+                      {isCancelled ? (
+                        <span className="text-slate-400 text-xs italic">-</span>
+                      ) : (
+                        <>
+                          <div className="font-semibold text-teal-700 font-mono">
+                            {formatRupiah(
+                              isPartialReturn && trx.totalReturnedAmount
+                                ? Math.max(0, trx.grossProfit - (trx.totalReturnedAmount - (trx.totalReturnedCost || 0)))
+                                : trx.grossProfit
+                            )}
+                          </div>
+                          <div className="text-[10px] text-slate-400">Modal: {formatRupiah(trx.totalCost)}</div>
+                        </>
+                      )}
                     </td>
 
                     <td className="px-4 py-3 text-center whitespace-nowrap">
@@ -222,7 +292,15 @@ export const TransactionsView: React.FC = () => {
                         {trx.paymentMethod === 'SALDO_DEPOSIT' ? '💰 DEPOSIT' : trx.paymentMethod}
                       </span>
                       <div>
-                        {isKasbon ? (
+                        {isCancelled ? (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">
+                            ❌ Dibatalkan
+                          </span>
+                        ) : isPartialReturn ? (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                            🔄 Retur Sebagian
+                          </span>
+                        ) : isKasbon ? (
                           <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
                             ⏳ Kasbon
                           </span>
@@ -267,6 +345,21 @@ export const TransactionsView: React.FC = () => {
                             Lunasi
                           </button>
                         )}
+
+                        {/* Batal / Retur Button */}
+                        <button
+                          id={`cancel-return-btn-${trx.id}`}
+                          onClick={() => setCancelReturnTrx(trx)}
+                          className={`p-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition ${
+                            isCancelled
+                              ? 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                              : 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200'
+                          }`}
+                          title={isCancelled ? 'Lihat Detail Pembatalan' : 'Batal / Retur Pesanan'}
+                        >
+                          <RotateCcw size={13} />
+                          <span className="hidden sm:inline">{isCancelled ? 'Detail' : 'Batal/Retur'}</span>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -345,6 +438,14 @@ export const TransactionsView: React.FC = () => {
         </div>
       )}
 
+      {/* Cancel & Return Modal */}
+      {cancelReturnTrx && (
+        <CancelReturnModal
+          transaction={cancelReturnTrx}
+          onClose={() => setCancelReturnTrx(null)}
+        />
+      )}
+
       {/* Receipt Modal */}
       {selectedReceipt && (
         <ReceiptModal
@@ -357,3 +458,4 @@ export const TransactionsView: React.FC = () => {
     </div>
   );
 };
+

@@ -19,6 +19,9 @@ import {
   CashClosingRecord,
   CashFlowSummary,
   CashAccountType,
+  ReturnedItemRecord,
+  ReturnRecord,
+  TransactionStatus,
 } from '../types';
 import {
   INITIAL_PRODUCTS,
@@ -103,6 +106,7 @@ interface WarungContextType {
   addToCart: (product: Product, selectedVariants?: ProductVariant[], quantity?: number, notes?: string) => void;
   updateCartItemQuantity: (cartItemId: string, delta: number) => void;
   setCartItemQuantity: (cartItemId: string, quantity: number) => void;
+  setCartItemDiscount: (cartItemId: string, discountType?: DiscountType, discountValue?: number) => void;
   removeFromCart: (cartItemId: string) => void;
   clearCart: () => void;
   setSelectedCustomer: (customer: Customer | null) => void;
@@ -114,6 +118,16 @@ interface WarungContextType {
   applyResellerDiscount: (customer: Customer) => void;
   setCartNotes: (notes: string) => void;
   processCheckout: () => Transaction | null;
+  cancelTransaction: (transactionId: string, reason: string, restockProducts?: boolean) => { success: boolean; message?: string };
+  returnTransactionItems: (
+    transactionId: string,
+    returnData: {
+      reason: string;
+      items: { cartItemId: string; returnedQuantity: number }[];
+      refundMethod: 'TUNAI' | 'SALDO_DEPOSIT' | 'POTONG_KASBON' | 'TRANSFER';
+      restockProducts: boolean;
+    }
+  ) => { success: boolean; message?: string };
 
   // Product CRUD
   addProduct: (product: Omit<Product, 'id'>) => void;
@@ -138,8 +152,6 @@ interface WarungContextType {
   updateStoreSettings: (settings: Partial<StoreSettings>) => void;
   syncWithCloud: () => Promise<boolean>;
   clearAllDatabase: () => void;
-  resetToSampleData: () => void;
-  importAllData: (jsonData: any) => boolean;
 
   // Financial Calculations
   calculateProfitLoss: (startDate: Date, endDate: Date, periodLabel: string) => ProfitLossSummary;
@@ -630,6 +642,33 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, [currentUser]);
 
   // Cart operations
+  // Helper to calculate item discount & subtotal
+  const computeCartItemAmounts = (
+    finalPricePerUnit: number,
+    quantity: number,
+    finalCostPerUnit: number,
+    discountType?: DiscountType,
+    discountValue?: number
+  ) => {
+    const gross = finalPricePerUnit * quantity;
+    const subtotalCost = quantity * finalCostPerUnit;
+
+    if (!discountType || discountValue === undefined || discountValue <= 0) {
+      return { discountAmount: 0, subtotal: gross, subtotalCost };
+    }
+
+    let discountAmount = 0;
+    if (discountType === 'PERCENTAGE') {
+      const validPct = Math.min(100, Math.max(0, discountValue));
+      discountAmount = Math.round((gross * validPct) / 100);
+    } else if (discountType === 'NOMINAL') {
+      discountAmount = Math.min(gross, Math.max(0, discountValue));
+    }
+
+    const subtotal = Math.max(0, gross - discountAmount);
+    return { discountAmount, subtotal, subtotalCost };
+  };
+
   const addToCart = useCallback((
     product: Product, 
     selectedVariants: ProductVariant[] = [], 
@@ -649,18 +688,36 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const existing = prev.find(item => item.id === cartItemId);
       if (existing) {
         const newQty = existing.quantity + quantity;
-        return prev.map(item =>
-          item.id === cartItemId
-            ? {
-                ...item,
-                quantity: newQty,
-                subtotal: newQty * item.finalPricePerUnit,
-                subtotalCost: newQty * item.finalCostPerUnit,
-                notes: notes || item.notes,
-              }
-            : item
-        );
+
+        return prev.map(item => {
+          if (item.id === cartItemId) {
+            const amounts = computeCartItemAmounts(
+              item.finalPricePerUnit,
+              newQty,
+              item.finalCostPerUnit,
+              item.discountType,
+              item.discountValue
+            );
+            return {
+              ...item,
+              quantity: newQty,
+              discountAmount: amounts.discountAmount,
+              subtotal: amounts.subtotal,
+              subtotalCost: amounts.subtotalCost,
+              notes: notes || item.notes,
+            };
+          }
+          return item;
+        });
       } else {
+        const { discountAmount, subtotal, subtotalCost } = computeCartItemAmounts(
+          finalPricePerUnit,
+          quantity,
+          finalCostPerUnit,
+          undefined,
+          0
+        );
+
         const newItem: CartItem = {
           id: cartItemId,
           productId: product.id,
@@ -671,8 +728,11 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           finalPricePerUnit,
           finalCostPerUnit,
           quantity,
-          subtotal: quantity * finalPricePerUnit,
-          subtotalCost: quantity * finalCostPerUnit,
+          discountType: undefined,
+          discountValue: undefined,
+          discountAmount,
+          subtotal,
+          subtotalCost,
           notes,
         };
         return [...prev, newItem];
@@ -687,11 +747,19 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           if (item.id === cartItemId) {
             const newQty = item.quantity + delta;
             if (newQty <= 0) return null;
+            const amounts = computeCartItemAmounts(
+              item.finalPricePerUnit,
+              newQty,
+              item.finalCostPerUnit,
+              item.discountType,
+              item.discountValue
+            );
             return {
               ...item,
               quantity: newQty,
-              subtotal: newQty * item.finalPricePerUnit,
-              subtotalCost: newQty * item.finalCostPerUnit,
+              discountAmount: amounts.discountAmount,
+              subtotal: amounts.subtotal,
+              subtotalCost: amounts.subtotalCost,
             };
           }
           return item;
@@ -705,11 +773,67 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const validQty = Math.max(1, Math.floor(quantity) || 1);
       return prev.map(item => {
         if (item.id === cartItemId) {
+          const amounts = computeCartItemAmounts(
+            item.finalPricePerUnit,
+            validQty,
+            item.finalCostPerUnit,
+            item.discountType,
+            item.discountValue
+          );
           return {
             ...item,
             quantity: validQty,
-            subtotal: validQty * item.finalPricePerUnit,
-            subtotalCost: validQty * item.finalCostPerUnit,
+            discountAmount: amounts.discountAmount,
+            subtotal: amounts.subtotal,
+            subtotalCost: amounts.subtotalCost,
+          };
+        }
+        return item;
+      });
+    });
+  }, []);
+
+  const setCartItemDiscount = useCallback((
+    cartItemId: string,
+    discountType?: DiscountType,
+    discountValue?: number
+  ) => {
+    setCart(prev => {
+      return prev.map(item => {
+        if (item.id === cartItemId) {
+          if (!discountType || discountValue === undefined || discountValue <= 0) {
+            const amounts = computeCartItemAmounts(
+              item.finalPricePerUnit,
+              item.quantity,
+              item.finalCostPerUnit,
+              undefined,
+              0
+            );
+            return {
+              ...item,
+              discountType: undefined,
+              discountValue: undefined,
+              discountAmount: 0,
+              subtotal: amounts.subtotal,
+              subtotalCost: amounts.subtotalCost,
+            };
+          }
+
+          const amounts = computeCartItemAmounts(
+            item.finalPricePerUnit,
+            item.quantity,
+            item.finalCostPerUnit,
+            discountType,
+            discountValue
+          );
+
+          return {
+            ...item,
+            discountType,
+            discountValue,
+            discountAmount: amounts.discountAmount,
+            subtotal: amounts.subtotal,
+            subtotalCost: amounts.subtotalCost,
           };
         }
         return item;
@@ -853,6 +977,352 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     cartNotes,
     currentUser,
   ]);
+
+  // 1. Cancel Entire Transaction (Pembatalan Seluruh Pesanan)
+  const cancelTransaction = useCallback(
+    (transactionId: string, reason: string, restockProducts: boolean = true) => {
+      const trimmedReason = reason?.trim();
+      if (!trimmedReason) {
+        return { success: false, message: 'Keterangan alasan pembatalan wajib diisi.' };
+      }
+
+      const trx = transactions.find(t => t.id === transactionId);
+      if (!trx) {
+        return { success: false, message: 'Transaksi tidak ditemukan.' };
+      }
+      if (trx.status === 'BATAL') {
+        return { success: false, message: 'Transaksi ini sudah berstatus BATAL sebelumnya.' };
+      }
+
+      const actorName = currentUser?.name || storeSettings.cashierName || 'Kasir';
+      const cancelTime = new Date().toISOString();
+
+      // Determine items and quantities to restock (account for any prior partial returns)
+      const returnedItemRecords: ReturnedItemRecord[] = [];
+      trx.items.forEach(item => {
+        const prevReturnedQty = (trx.returnRecords || []).reduce((sum, rec) => {
+          const matched = rec.items.find(ri => ri.cartItemId === item.id);
+          return sum + (matched ? matched.returnedQuantity : 0);
+        }, 0);
+        const remainingQty = Math.max(0, item.quantity - prevReturnedQty);
+        if (remainingQty > 0) {
+          const refundSubtotal = remainingQty * item.finalPricePerUnit;
+          const refundCost = remainingQty * item.finalCostPerUnit;
+          returnedItemRecords.push({
+            cartItemId: item.id,
+            productId: item.productId,
+            productName: item.productName,
+            variantNames: item.selectedVariants.map(v => v.name).join(', '),
+            returnedQuantity: remainingQty,
+            pricePerUnit: item.finalPricePerUnit,
+            costPerUnit: item.finalCostPerUnit,
+            refundSubtotal,
+            refundCost,
+          });
+        }
+      });
+
+      const netRefundAmount = Math.max(0, trx.finalAmount - (trx.totalReturnedAmount || 0));
+      const netRefundCost = Math.max(0, trx.totalCost - (trx.totalReturnedCost || 0));
+
+      const fullCancelRecord: ReturnRecord = {
+        id: 'ret-' + Date.now(),
+        timestamp: cancelTime,
+        type: 'FULL_CANCEL',
+        reason: trimmedReason,
+        items: returnedItemRecords,
+        totalRefundAmount: netRefundAmount,
+        totalRefundCost: netRefundCost,
+        refundMethod: trx.paymentMethod === 'SALDO_DEPOSIT' ? 'SALDO_DEPOSIT' : (trx.status === 'BELUM_LUNAS' ? 'POTONG_KASBON' : 'TUNAI'),
+        restockProducts,
+        processedBy: actorName,
+      };
+
+      const updatedTrx: Transaction = {
+        ...trx,
+        status: 'BATAL',
+        cancellationReason: trimmedReason,
+        cancelledAt: cancelTime,
+        cancelledBy: actorName,
+        totalReturnedAmount: trx.finalAmount,
+        totalReturnedCost: trx.totalCost,
+        returnRecords: [...(trx.returnRecords || []), fullCancelRecord],
+      };
+
+      // 1. Update Transaction
+      setTransactions(prev => prev.map(t => (t.id === transactionId ? updatedTrx : t)));
+      saveTransactionToFirestore(updatedTrx);
+
+      // 2. Restock products if requested
+      if (restockProducts && returnedItemRecords.length > 0) {
+        setProducts(prevProducts => {
+          return prevProducts.map(p => {
+            const itemToRestore = returnedItemRecords.find(ri => ri.productId === p.id);
+            if (itemToRestore) {
+              const updatedProd = { ...p, stock: p.stock + itemToRestore.returnedQuantity };
+              saveProductToFirestore(updatedProd);
+              return updatedProd;
+            }
+            return p;
+          });
+        });
+      }
+
+      // 3. Customer balance adjustments
+      if (trx.customerId) {
+        setCustomers(prevCustomers => {
+          return prevCustomers.map(c => {
+            if (c.id === trx.customerId) {
+              let newDeposit = c.depositBalance || 0;
+              const newHistory = c.depositHistory ? [...c.depositHistory] : [];
+
+              // If original payment was SALDO_DEPOSIT (or deposit was used), refund to deposit
+              if (trx.paymentMethod === 'SALDO_DEPOSIT' || (trx.depositUsed && trx.depositUsed > 0)) {
+                const depositRefund = trx.depositUsed || netRefundAmount;
+                newDeposit += depositRefund;
+                newHistory.unshift({
+                  id: 'dep-' + Date.now(),
+                  timestamp: cancelTime,
+                  type: 'REFUND',
+                  amount: depositRefund,
+                  invoiceNumber: trx.invoiceNumber,
+                  notes: `Pengembalian Saldo (Batal Nota ${trx.invoiceNumber}): ${trimmedReason}`,
+                  remainingBalance: newDeposit,
+                });
+              }
+
+              const newDebt = trx.status === 'BELUM_LUNAS' 
+                ? Math.max(0, c.totalDebt - netRefundAmount) 
+                : c.totalDebt;
+
+              const newSpent = (trx.status === 'LUNAS' && trx.paymentMethod !== 'SALDO_DEPOSIT')
+                ? Math.max(0, c.totalSpent - netRefundAmount)
+                : c.totalSpent;
+
+              const updatedCust: Customer = {
+                ...c,
+                totalTransactions: Math.max(0, c.totalTransactions - 1),
+                totalSpent: newSpent,
+                totalDebt: newDebt,
+                depositBalance: newDeposit,
+                depositHistory: newHistory,
+              };
+              saveCustomerToFirestore(updatedCust);
+              return updatedCust;
+            }
+            return c;
+          });
+        });
+      }
+
+      return { success: true };
+    },
+    [transactions, currentUser, storeSettings]
+  );
+
+  // 2. Return Partial Transaction Items (Retur Sebagian Item Pesanan)
+  const returnTransactionItems = useCallback(
+    (
+      transactionId: string,
+      returnData: {
+        reason: string;
+        items: { cartItemId: string; returnedQuantity: number }[];
+        refundMethod: 'TUNAI' | 'SALDO_DEPOSIT' | 'POTONG_KASBON' | 'TRANSFER';
+        restockProducts: boolean;
+      }
+    ) => {
+      const trimmedReason = returnData.reason?.trim();
+      if (!trimmedReason) {
+        return { success: false, message: 'Keterangan alasan retur wajib diisi.' };
+      }
+
+      const trx = transactions.find(t => t.id === transactionId);
+      if (!trx) {
+        return { success: false, message: 'Transaksi tidak ditemukan.' };
+      }
+      if (trx.status === 'BATAL') {
+        return { success: false, message: 'Transaksi yang sudah BATAL tidak dapat diretur lagi.' };
+      }
+
+      if (!returnData.items || returnData.items.length === 0) {
+        return { success: false, message: 'Silakan pilih minimal 1 item untuk diretur.' };
+      }
+
+      const actorName = currentUser?.name || storeSettings.cashierName || 'Kasir';
+      const returnTime = new Date().toISOString();
+
+      // Build returned item records and validate quantities
+      const returnedItemRecords: ReturnedItemRecord[] = [];
+      let totalRefundGross = 0;
+      let totalRefundCost = 0;
+
+      for (const reqItem of returnData.items) {
+        if (reqItem.returnedQuantity <= 0) continue;
+        const origItem = trx.items.find(i => i.id === reqItem.cartItemId);
+        if (!origItem) continue;
+
+        // Calculate how many were already returned
+        const prevReturnedQty = (trx.returnRecords || []).reduce((sum, rec) => {
+          const matched = rec.items.find(ri => ri.cartItemId === origItem.id);
+          return sum + (matched ? matched.returnedQuantity : 0);
+        }, 0);
+
+        const availableToReturn = Math.max(0, origItem.quantity - prevReturnedQty);
+        if (reqItem.returnedQuantity > availableToReturn) {
+          return {
+            success: false,
+            message: `Jumlah retur untuk ${origItem.productName} (${reqItem.returnedQuantity}) melebihi sisa pesanan aktif (${availableToReturn}).`,
+          };
+        }
+
+        const refundSub = reqItem.returnedQuantity * origItem.finalPricePerUnit;
+        const refundC = reqItem.returnedQuantity * origItem.finalCostPerUnit;
+
+        totalRefundGross += refundSub;
+        totalRefundCost += refundC;
+
+        returnedItemRecords.push({
+          cartItemId: origItem.id,
+          productId: origItem.productId,
+          productName: origItem.productName,
+          variantNames: origItem.selectedVariants.map(v => v.name).join(', '),
+          returnedQuantity: reqItem.returnedQuantity,
+          pricePerUnit: origItem.finalPricePerUnit,
+          costPerUnit: origItem.finalCostPerUnit,
+          refundSubtotal: refundSub,
+          refundCost: refundC,
+        });
+      }
+
+      if (returnedItemRecords.length === 0) {
+        return { success: false, message: 'Tidak ada item yang dipilih untuk diretur.' };
+      }
+
+      // Pro-rate discount if transaction had discount
+      let effectiveRefundAmount = totalRefundGross;
+      if (trx.subtotal > 0 && trx.discount > 0) {
+        const discountRatio = trx.discount / trx.subtotal;
+        effectiveRefundAmount = Math.max(0, Math.round(totalRefundGross * (1 - discountRatio)));
+      }
+      // Pro-rate tax if tax was enabled on transaction
+      if (trx.subtotal > 0 && trx.tax > 0) {
+        const taxRate = trx.tax / (trx.subtotal - trx.discount);
+        effectiveRefundAmount = Math.round(effectiveRefundAmount * (1 + taxRate));
+      }
+
+      const prevTotalReturned = trx.totalReturnedAmount || 0;
+      const prevTotalReturnedCost = trx.totalReturnedCost || 0;
+      const newTotalReturned = Math.min(trx.finalAmount, prevTotalReturned + effectiveRefundAmount);
+      const newTotalReturnedCost = Math.min(trx.totalCost, prevTotalReturnedCost + totalRefundCost);
+
+      // Check if all items across all records are now 100% returned
+      let allFullyReturned = true;
+      trx.items.forEach(item => {
+        const totalItemReturned = (trx.returnRecords || []).reduce((sum, rec) => {
+          const matched = rec.items.find(ri => ri.cartItemId === item.id);
+          return sum + (matched ? matched.returnedQuantity : 0);
+        }, 0) + (returnedItemRecords.find(ri => ri.cartItemId === item.id)?.returnedQuantity || 0);
+
+        if (totalItemReturned < item.quantity) {
+          allFullyReturned = false;
+        }
+      });
+
+      const newStatus: TransactionStatus = allFullyReturned ? 'BATAL' : 'DIRETUR_SEBAGIAN';
+
+      const returnRecord: ReturnRecord = {
+        id: 'ret-' + Date.now(),
+        timestamp: returnTime,
+        type: allFullyReturned ? 'FULL_CANCEL' : 'PARTIAL_RETURN',
+        reason: trimmedReason,
+        items: returnedItemRecords,
+        totalRefundAmount: effectiveRefundAmount,
+        totalRefundCost,
+        refundMethod: returnData.refundMethod,
+        restockProducts: returnData.restockProducts,
+        processedBy: actorName,
+      };
+
+      const updatedTrx: Transaction = {
+        ...trx,
+        status: newStatus,
+        cancellationReason: allFullyReturned ? trimmedReason : trx.cancellationReason,
+        cancelledAt: allFullyReturned ? returnTime : trx.cancelledAt,
+        cancelledBy: allFullyReturned ? actorName : trx.cancelledBy,
+        totalReturnedAmount: newTotalReturned,
+        totalReturnedCost: newTotalReturnedCost,
+        returnRecords: [...(trx.returnRecords || []), returnRecord],
+      };
+
+      // 1. Update Transaction
+      setTransactions(prev => prev.map(t => (t.id === transactionId ? updatedTrx : t)));
+      saveTransactionToFirestore(updatedTrx);
+
+      // 2. Restock products if requested
+      if (returnData.restockProducts && returnedItemRecords.length > 0) {
+        setProducts(prevProducts => {
+          return prevProducts.map(p => {
+            const matchItems = returnedItemRecords.filter(ri => ri.productId === p.id);
+            if (matchItems.length > 0) {
+              const qtyToAdd = matchItems.reduce((s, mi) => s + mi.returnedQuantity, 0);
+              const updatedProd = { ...p, stock: p.stock + qtyToAdd };
+              saveProductToFirestore(updatedProd);
+              return updatedProd;
+            }
+            return p;
+          });
+        });
+      }
+
+      // 3. Customer updates
+      if (trx.customerId) {
+        setCustomers(prevCustomers => {
+          return prevCustomers.map(c => {
+            if (c.id === trx.customerId) {
+              let newDeposit = c.depositBalance || 0;
+              const newHistory = c.depositHistory ? [...c.depositHistory] : [];
+
+              if (returnData.refundMethod === 'SALDO_DEPOSIT' && c.customerType !== 'RESELLER') {
+                newDeposit += effectiveRefundAmount;
+                newHistory.unshift({
+                  id: 'dep-' + Date.now(),
+                  timestamp: returnTime,
+                  type: 'REFUND',
+                  amount: effectiveRefundAmount,
+                  invoiceNumber: trx.invoiceNumber,
+                  notes: `Pengembalian Saldo (Retur Item Nota ${trx.invoiceNumber}): ${trimmedReason}`,
+                  remainingBalance: newDeposit,
+                });
+              }
+
+              const newDebt = (returnData.refundMethod === 'POTONG_KASBON' || trx.status === 'BELUM_LUNAS')
+                ? Math.max(0, c.totalDebt - effectiveRefundAmount)
+                : c.totalDebt;
+
+              const newSpent = (trx.status === 'LUNAS' && returnData.refundMethod !== 'SALDO_DEPOSIT')
+                ? Math.max(0, c.totalSpent - effectiveRefundAmount)
+                : c.totalSpent;
+
+              const updatedCust: Customer = {
+                ...c,
+                totalTransactions: allFullyReturned ? Math.max(0, c.totalTransactions - 1) : c.totalTransactions,
+                totalSpent: newSpent,
+                totalDebt: newDebt,
+                depositBalance: newDeposit,
+                depositHistory: newHistory,
+              };
+              saveCustomerToFirestore(updatedCust);
+              return updatedCust;
+            }
+            return c;
+          });
+        });
+      }
+
+      return { success: true };
+    },
+    [transactions, currentUser, storeSettings]
+  );
 
   // Product CRUD
   const addProduct = useCallback((newProdData: Omit<Product, 'id'>) => {
@@ -1121,7 +1591,12 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         if (t.amountPaid <= 0) return;
       }
 
-      const amountToRecord = t.paymentMethod === 'KASBON' ? t.amountPaid : t.finalAmount;
+      const rawAmount = t.paymentMethod === 'KASBON' ? t.amountPaid : t.finalAmount;
+      const netAmount = t.status === 'DIRETUR_SEBAGIAN' 
+        ? Math.max(0, rawAmount - (t.totalReturnedAmount || 0)) 
+        : rawAmount;
+
+      if (netAmount <= 0) return;
 
       rawItems.push({
         id: `trx-${t.id}`,
@@ -1129,8 +1604,8 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         dateStr: t.timestamp.slice(0, 10),
         type: 'KAS_MASUK',
         category: 'Penjualan Kasir',
-        title: `Penjualan Nota ${t.invoiceNumber} (${t.customerName || 'Pelanggan Umum'})`,
-        amount: amountToRecord,
+        title: `Penjualan Nota ${t.invoiceNumber} (${t.customerName || 'Pelanggan Umum'})${t.status === 'DIRETUR_SEBAGIAN' ? ' [Retur Sebagian]' : ''}`,
+        amount: netAmount,
         account,
         accountLabel,
         referenceType: 'TRANSACTION',
@@ -1462,35 +1937,6 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     clearAllFirestoreDocuments();
   }, []);
 
-  const resetToSampleData = useCallback(() => {
-    clearAllDatabase();
-  }, [clearAllDatabase]);
-
-  const importAllData = useCallback((jsonData: any): boolean => {
-    try {
-      if (jsonData.products) setProducts(jsonData.products);
-      if (jsonData.transactions) setTransactions(jsonData.transactions);
-      if (jsonData.expenses) setExpenses(jsonData.expenses);
-      if (jsonData.customers) setCustomers(jsonData.customers);
-      if (jsonData.storeSettings) setStoreSettings(jsonData.storeSettings);
-      
-      pushFullDatabaseToFirestore({
-        products: jsonData.products || [],
-        transactions: jsonData.transactions || [],
-        expenses: jsonData.expenses || [],
-        customers: jsonData.customers || [],
-        manualJournals: jsonData.manualJournals || [],
-        cashClosings: jsonData.cashClosings || [],
-        storeSettings: jsonData.storeSettings || INITIAL_STORE_SETTINGS,
-        users: jsonData.users || INITIAL_USERS,
-      });
-
-      return true;
-    } catch {
-      return false;
-    }
-  }, []);
-
   // Financial calculations helper for any date interval
   const calculateProfitLoss = useCallback(
     (startDate: Date, endDate: Date, periodLabel: string): ProfitLossSummary => {
@@ -1509,8 +1955,18 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         return eMs >= startMs && eMs <= endMs;
       });
 
-      const totalSales = periodTransactions.reduce((sum, t) => sum + t.finalAmount, 0);
-      const totalCostOfGoods = periodTransactions.reduce((sum, t) => sum + t.totalCost, 0);
+      const totalSales = periodTransactions.reduce((sum, t) => {
+        const netAmt = t.status === 'DIRETUR_SEBAGIAN' 
+          ? Math.max(0, t.finalAmount - (t.totalReturnedAmount || 0)) 
+          : t.finalAmount;
+        return sum + netAmt;
+      }, 0);
+      const totalCostOfGoods = periodTransactions.reduce((sum, t) => {
+        const netCost = t.status === 'DIRETUR_SEBAGIAN' 
+          ? Math.max(0, t.totalCost - (t.totalReturnedCost || 0)) 
+          : t.totalCost;
+        return sum + netCost;
+      }, 0);
       const grossProfit = totalSales - totalCostOfGoods;
       const grossMargin = totalSales > 0 ? (grossProfit / totalSales) * 100 : 0;
 
@@ -1523,7 +1979,12 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
       const unpaidDebtTotal = periodTransactions
         .filter(t => t.status === 'BELUM_LUNAS')
-        .reduce((sum, t) => sum + t.finalAmount, 0);
+        .reduce((sum, t) => {
+          const netAmt = t.status === 'DIRETUR_SEBAGIAN' 
+            ? Math.max(0, t.finalAmount - (t.totalReturnedAmount || 0)) 
+            : t.finalAmount;
+          return sum + netAmt;
+        }, 0);
 
       const expenseBreakdown: { [key in ExpenseCategory]?: number } = {};
       periodExpenses.forEach(e => {
@@ -1589,6 +2050,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         addToCart,
         updateCartItemQuantity,
         setCartItemQuantity,
+        setCartItemDiscount,
         removeFromCart,
         clearCart,
         setSelectedCustomer,
@@ -1600,6 +2062,8 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         applyResellerDiscount,
         setCartNotes,
         processCheckout,
+        cancelTransaction,
+        returnTransactionItems,
         addProduct,
         updateProduct,
         deleteProduct,
@@ -1616,8 +2080,6 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         updateStoreSettings,
         syncWithCloud,
         clearAllDatabase,
-        resetToSampleData,
-        importAllData,
         calculateProfitLoss,
       }}
     >

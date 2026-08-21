@@ -41,6 +41,9 @@ export interface CartItem {
   finalPricePerUnit: number; // basePrice + sum of variant priceAdjustments
   finalCostPerUnit: number;  // baseCost + sum of variant costAdjustments
   quantity: number;
+  discountType?: DiscountType; // 'PERCENTAGE' | 'NOMINAL'
+  discountValue?: number;      // e.g. 10 for 10%, or 5000 for Rp 5.000
+  discountAmount?: number;     // calculated total discount value for this cart item
   subtotal: number;
   subtotalCost: number;
   notes?: string;
@@ -69,6 +72,33 @@ export interface PaymentRecord {
   notes?: string;
 }
 
+export interface ReturnedItemRecord {
+  cartItemId: string;
+  productId: string;
+  productName: string;
+  variantNames?: string;
+  returnedQuantity: number;
+  pricePerUnit: number;
+  costPerUnit: number;
+  refundSubtotal: number;
+  refundCost: number;
+}
+
+export interface ReturnRecord {
+  id: string;
+  timestamp: string; // ISO date string
+  type: 'FULL_CANCEL' | 'PARTIAL_RETURN';
+  reason: string; // Kolom keterangan alasan batal / retur
+  items: ReturnedItemRecord[];
+  totalRefundAmount: number;
+  totalRefundCost: number;
+  refundMethod: 'TUNAI' | 'SALDO_DEPOSIT' | 'POTONG_KASBON' | 'TRANSFER';
+  restockProducts: boolean; // Apakah stok barang dikembalikan ke inventory
+  processedBy?: string;
+}
+
+export type TransactionStatus = 'LUNAS' | 'BELUM_LUNAS' | 'BATAL' | 'DIRETUR_SEBAGIAN';
+
 export interface Transaction {
   id: string;
   invoiceNumber: string;
@@ -90,12 +120,19 @@ export interface Transaction {
   customerName?: string;
   customerPhone?: string;
   customerType?: CustomerType;
-  status: 'LUNAS' | 'BELUM_LUNAS' | 'BATAL';
+  status: TransactionStatus;
   dueDate?: string; // Untuk Kasbon
   depositUsed?: number;
   remainingDeposit?: number;
   paymentHistory?: PaymentRecord[];
   notes?: string;
+  // Detail Pembatalan & Retur
+  cancellationReason?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  returnRecords?: ReturnRecord[];
+  totalReturnedAmount?: number; // Total rupiah dana yang sudah dikembalikan/diretur
+  totalReturnedCost?: number;   // Total HPP yang sudah diretur
 }
 
 export type ExpenseCategory = 

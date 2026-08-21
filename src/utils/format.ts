@@ -57,20 +57,42 @@ export function generateReceiptWhatsAppText(transaction: Transaction, store: Sto
     const variantsText = item.selectedVariants.length > 0
       ? ` (${item.selectedVariants.map(v => v.name).join(', ')})`
       : '';
+    const discountText = item.discountAmount && item.discountAmount > 0
+      ? ` (Diskon: -${formatRupiah(item.discountAmount)})`
+      : '';
     itemsText += `${index + 1}. *${item.productName}${variantsText}*\n`;
-    itemsText += `   ${item.quantity}x @ ${formatRupiah(item.finalPricePerUnit)} = *${formatRupiah(item.subtotal)}*\n`;
+    itemsText += `   ${item.quantity}x @ ${formatRupiah(item.finalPricePerUnit)}${discountText} = *${formatRupiah(item.subtotal)}*\n`;
     if (item.notes) {
       itemsText += `   _Catatan: ${item.notes}_\n`;
     }
   });
 
-  const paymentStatus = transaction.status === 'LUNAS' 
+  const paymentStatus = transaction.status === 'BATAL'
+    ? '❌ *DIBATALKAN*'
+    : transaction.status === 'DIRETUR_SEBAGIAN'
+    ? '🔄 *DIRETUR SEBAGIAN*'
+    : transaction.status === 'LUNAS' 
     ? '✅ *LUNAS*' 
     : '⏳ *BELUM LUNAS (KASBON)*';
 
   const methodLabel = transaction.paymentMethod === 'SALDO_DEPOSIT'
     ? '💳 SALDO DEPOSIT'
     : transaction.paymentMethod;
+
+  let cancelInfoText = '';
+  if (transaction.status === 'BATAL') {
+    cancelInfoText = `\n⚠️ *STATUS: PESANAN DIBATALKAN*\nAlasan Batal: _${transaction.cancellationReason || 'Tidak ada keterangan'}_\n`;
+  }
+
+  let returnInfoText = '';
+  if (transaction.status === 'DIRETUR_SEBAGIAN' && transaction.returnRecords && transaction.returnRecords.length > 0) {
+    returnInfoText = `\n🔄 *INFORMASI RETUR ITEM:*\n`;
+    transaction.returnRecords.forEach((rec, idx) => {
+      returnInfoText += `• Retur #${idx + 1}: *${formatRupiah(rec.totalRefundAmount)}* (${rec.refundMethod})\n  Alasan: _${rec.reason}_\n`;
+    });
+    const netAmount = Math.max(0, transaction.finalAmount - (transaction.totalReturnedAmount || 0));
+    returnInfoText += `*Net Tagihan Aktif: ${formatRupiah(netAmount)}*\n`;
+  }
 
   let depositInfoText = '';
   if (transaction.paymentMethod === 'SALDO_DEPOSIT' && transaction.remainingDeposit !== undefined) {
@@ -96,7 +118,7 @@ No. Nota : *${transaction.invoiceNumber}*
 Waktu    : ${dateStr}
 Kasir    : ${transaction.cashierName}
 Pelanggan: ${transaction.customerName || 'Umum'}${customerGroupTag}
-Status   : ${paymentStatus}
+Status   : ${paymentStatus}${cancelInfoText}${returnInfoText}
 ----------------------------------------
 *RINCIAN PESANAN:*
 ${itemsText}----------------------------------------

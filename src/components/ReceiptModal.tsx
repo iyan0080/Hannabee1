@@ -125,11 +125,63 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </div>
               <div className="flex justify-between">
                 <span>Status:</span>
-                <span className={`font-bold ${transaction.status === 'LUNAS' ? 'text-emerald-700' : 'text-amber-700'}`}>
-                  {transaction.status}
+                <span className={`font-bold ${
+                  transaction.status === 'BATAL'
+                    ? 'text-red-700'
+                    : transaction.status === 'DIRETUR_SEBAGIAN'
+                    ? 'text-indigo-700'
+                    : transaction.status === 'LUNAS'
+                    ? 'text-emerald-700'
+                    : 'text-amber-700'
+                }`}>
+                  {transaction.status === 'BATAL'
+                    ? '❌ DIBATALKAN'
+                    : transaction.status === 'DIRETUR_SEBAGIAN'
+                    ? '🔄 DIRETUR SEBAGIAN'
+                    : transaction.status}
                 </span>
               </div>
             </div>
+
+            {/* Cancellation Notice on Receipt */}
+            {transaction.status === 'BATAL' && (
+              <div className="py-2 border-b border-dashed border-red-400 text-[10px] text-red-700 space-y-0.5">
+                <div className="font-bold uppercase tracking-wider text-center">[ TRANSAKSI INI DIBATALKAN ]</div>
+                {transaction.cancellationReason && (
+                  <div>
+                    <span>Alasan Batal: </span>
+                    <span className="italic font-medium">"{transaction.cancellationReason}"</span>
+                  </div>
+                )}
+                {transaction.cancelledAt && (
+                  <div>Waktu Batal: {formatDate(transaction.cancelledAt)}</div>
+                )}
+              </div>
+            )}
+
+            {/* Return Notice on Receipt */}
+            {transaction.status === 'DIRETUR_SEBAGIAN' && transaction.returnRecords && transaction.returnRecords.length > 0 && (
+              <div className="py-2 border-b border-dashed border-indigo-400 text-[10px] text-indigo-900 space-y-1">
+                <div className="font-bold uppercase tracking-wider text-center">[ CATATAN RETUR SEBAGIAN ]</div>
+                {transaction.returnRecords.map((rec, rIdx) => (
+                  <div key={rIdx} className="bg-indigo-50/60 p-1.5 rounded space-y-0.5">
+                    <div className="flex justify-between font-semibold">
+                      <span>Retur #{rIdx + 1} ({formatRupiah(rec.totalRefundAmount)}):</span>
+                      <span>{rec.refundMethod}</span>
+                    </div>
+                    <div className="italic text-[9px]">"{rec.reason}"</div>
+                    <div className="pl-1 border-l border-indigo-300">
+                      {rec.items.map((it, itIdx) => (
+                        <div key={itIdx} className="flex justify-between text-[9px]">
+                          <span>{it.returnedQuantity}x {it.productName}</span>
+                          <span>{formatRupiah(it.refundSubtotal)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Items List */}
             <div className="py-2.5 border-b border-dashed border-slate-400">
@@ -155,6 +207,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                       <span>{item.quantity} x {formatRupiah(item.finalPricePerUnit)}</span>
                       <span className="font-semibold text-slate-800">{formatRupiah(item.subtotal)}</span>
                     </div>
+                    {item.discountAmount && item.discountAmount > 0 && (
+                      <div className="flex justify-between text-emerald-700 text-[10px] pl-1 font-medium">
+                        <span>
+                          * {item.discountType === 'PERCENTAGE' ? `Diskon (${item.discountValue}%)` : 'Diskon Item'}
+                        </span>
+                        <span>-{formatRupiah(item.discountAmount)}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -179,9 +239,21 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 </div>
               )}
               <div className="flex justify-between font-bold text-xs pt-1 border-t border-slate-200 text-slate-900">
-                <span>TOTAL AKHIR:</span>
+                <span>TOTAL AWAL:</span>
                 <span>{formatRupiah(transaction.finalAmount)}</span>
               </div>
+              {transaction.totalReturnedAmount && transaction.totalReturnedAmount > 0 && (
+                <>
+                  <div className="flex justify-between text-indigo-700 font-medium">
+                    <span>Total Diretur:</span>
+                    <span>-{formatRupiah(transaction.totalReturnedAmount)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-xs text-indigo-900 pt-0.5 border-t border-dotted border-slate-300">
+                    <span>NET SESUDAH RETUR:</span>
+                    <span>{formatRupiah(Math.max(0, transaction.finalAmount - transaction.totalReturnedAmount))}</span>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between text-slate-700">
                 <span>Metode Bayar:</span>
                 <span className="font-bold">

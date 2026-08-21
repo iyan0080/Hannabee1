@@ -8,8 +8,6 @@ import {
   Printer,
   Cloud,
   RefreshCw,
-  Download,
-  Upload,
   RotateCcw,
   CheckCircle2,
   Save,
@@ -29,12 +27,6 @@ export const SettingsView: React.FC = () => {
     syncState,
     syncWithCloud,
     clearAllDatabase,
-    resetToSampleData,
-    importAllData,
-    products,
-    transactions,
-    expenses,
-    customers,
     currentUser,
     users,
   } = useWarung();
@@ -47,48 +39,6 @@ export const SettingsView: React.FC = () => {
     updateStoreSettings(formData);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 3000);
-  };
-
-  // Export full JSON backup
-  const handleExportBackup = () => {
-    const backupData = {
-      exportedAt: new Date().toISOString(),
-      storeSettings,
-      products,
-      transactions,
-      expenses,
-      customers,
-    };
-
-    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Backup_WarungKu_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Import JSON backup
-  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = event => {
-      try {
-        const json = JSON.parse(event.target?.result as string);
-        const ok = importAllData(json);
-        if (ok) {
-          alert('Data warung berhasil dipulihkan dari file cadangan!');
-        } else {
-          alert('Format file cadangan tidak valid.');
-        }
-      } catch {
-        alert('Gagal membaca file JSON cadangan.');
-      }
-    };
-    reader.readAsText(file);
   };
 
   return (
@@ -105,7 +55,7 @@ export const SettingsView: React.FC = () => {
               Pengaturan Profil Warung & Sistem
             </h2>
             <p className="text-xs text-slate-500">
-              Kelola identitas usaha, format struk kasir, sinkronisasi multi-device, dan cadangan data.
+              Kelola identitas usaha, format struk kasir, dan sinkronisasi multi-device.
             </p>
           </div>
         </div>
@@ -335,50 +285,34 @@ export const SettingsView: React.FC = () => {
         )}
       </div>
 
-      {/* 4. Backup & Reset Data */}
+      {/* 4. Pembersihan & Reset Data Operasional */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-        <h3 className="font-bold text-sm text-slate-900 border-b border-slate-100 pb-3">
-          Cadangan & Pemulihan Data
-        </h3>
+        <div>
+          <h3 className="font-bold text-sm text-slate-900 border-b border-slate-100 pb-2">
+            Pembersihan & Reset Database
+          </h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Kosongkan seluruh data demo, riwayat transaksi, dan catatan pembukuan untuk memulai operasional warung dari awal yang bersih.
+          </p>
+        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          {/* Download JSON */}
-          <button
-            id="download-backup-json-btn"
-            onClick={handleExportBackup}
-            className="p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-800 transition"
-          >
-            <Download size={20} className="text-blue-600" />
-            <span className="font-bold">Unduh Cadangan JSON</span>
-            <span className="text-[10px] text-slate-500 text-center">Simpan seluruh data ke file</span>
-          </button>
-
-          {/* Upload JSON */}
-          <label className="p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-800 transition cursor-pointer">
-            <Upload size={20} className="text-emerald-600" />
-            <span className="font-bold">Pulihkan Data JSON</span>
-            <span className="text-[10px] text-slate-500 text-center">Unggah file cadangan sebelumnya</span>
-            <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
-          </label>
-
-          {/* Hapus Semua Data Demo / Kosongkan Database */}
+        <div className="pt-1">
           <button
             id="reset-sample-data-btn"
             onClick={() => {
               if (
                 confirm(
-                  'Apakah Anda yakin ingin menghapus semua database demo dan mengosongkan seluruh data transaksi, produk, kasbon, dan pengeluaran?\n\nTindakan ini akan membuat warung Anda bersih dan siap untuk operasional nyata.'
+                  'Apakah Anda yakin ingin menghapus semua database demo dan mengosongkan seluruh data transaksi, produk, kasbon, dan pengeluaran?\n\nTindakan ini akan membuat database warung Anda bersih dan siap untuk operasional nyata.'
                 )
               ) {
                 clearAllDatabase();
                 alert('Semua data demo telah berhasil dihapus. Database warung Anda sekarang bersih dan siap digunakan!');
               }
             }}
-            className="p-4 bg-red-50/70 hover:bg-red-100/80 border border-red-200 rounded-xl flex flex-col items-center justify-center gap-2 text-red-800 transition"
+            className="w-full sm:w-auto px-5 py-3 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl flex items-center justify-center gap-2.5 font-bold text-xs transition"
           >
-            <Trash2 size={20} className="text-red-600" />
-            <span className="font-bold">Kosongkan Semua Data</span>
-            <span className="text-[10px] text-red-600/80 text-center">Hapus seluruh data demo & transaksi</span>
+            <Trash2 size={16} className="text-red-600" />
+            <span>Kosongkan Semua Data & Mulai Baru</span>
           </button>
         </div>
       </div>
