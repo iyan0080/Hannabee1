@@ -54,7 +54,7 @@ export type DiscountType = 'NOMINAL' | 'PERCENTAGE';
 export interface DepositRecord {
   id: string;
   timestamp: string;
-  type: 'TOPUP' | 'PAYMENT' | 'REFUND' | 'WITHDRAWAL' | 'CLEAR';
+  type: 'TOPUP' | 'PAYMENT' | 'REFUND';
   amount: number;
   paymentMethod?: 'TUNAI' | 'TRANSFER' | 'QRIS';
   invoiceNumber?: string;

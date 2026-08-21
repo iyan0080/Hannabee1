@@ -58,6 +58,7 @@ export const POSView: React.FC = () => {
     storeSettings,
     addToCart,
     updateCartItemQuantity,
+    setCartItemQuantity,
     removeFromCart,
     clearCart,
     setSelectedCustomer,
@@ -169,6 +170,10 @@ export const POSView: React.FC = () => {
     if (paymentMethod === 'SALDO_DEPOSIT') {
       if (!selectedCustomer) {
         alert('Untuk metode Saldo Deposit, silakan pilih data Pelanggan terlebih dahulu.');
+        return;
+      }
+      if (selectedCustomer.customerType === 'RESELLER') {
+        alert('Fitur Saldo Deposit hanya berlaku untuk Pelanggan Umum. Pelanggan Reseller tidak menggunakan fitur deposit.');
         return;
       }
       const custBalance = selectedCustomer.depositBalance || 0;
@@ -377,6 +382,9 @@ export const POSView: React.FC = () => {
                     onChange={e => {
                       const found = customers.find(c => c.id === e.target.value);
                       setSelectedCustomer(found || null);
+                      if (found?.customerType === 'RESELLER' && paymentMethod === 'SALDO_DEPOSIT') {
+                        setPaymentMethod('TUNAI');
+                      }
                     }}
                     className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                   >
@@ -430,48 +438,70 @@ export const POSView: React.FC = () => {
               {selectedCustomer && (
                 <div className="mt-2 space-y-1.5">
                   {/* Reseller Active Banner */}
-                  {selectedCustomer.customerType === 'RESELLER' && (
-                    <div className="flex items-center justify-between bg-amber-500/10 border border-amber-300/80 rounded-xl p-2 text-xs text-amber-900">
-                      <div className="flex items-center gap-1.5">
-                        <Store size={14} className="text-amber-700" />
-                        <div>
-                          <span className="font-bold text-amber-900">Pelanggan Reseller</span>
-                          {selectedCustomer.storeName && (
-                            <span className="text-[11px] text-amber-800 ml-1 font-medium">({selectedCustomer.storeName})</span>
-                          )}
+                  {selectedCustomer.customerType === 'RESELLER' ? (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between bg-amber-500/10 border border-amber-300/80 rounded-xl p-2 text-xs text-amber-900">
+                        <div className="flex items-center gap-1.5">
+                          <Store size={14} className="text-amber-700" />
+                          <div>
+                            <span className="font-bold text-amber-900">Pelanggan Reseller</span>
+                            {selectedCustomer.storeName && (
+                              <span className="text-[11px] text-amber-800 ml-1 font-medium">({selectedCustomer.storeName})</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                            {selectedCustomer.resellerDiscountType === 'PERCENTAGE' 
+                              ? `Diskon ${selectedCustomer.resellerDiscountValue || 0}%` 
+                              : `Diskon ${formatRupiah(selectedCustomer.resellerDiscountValue || 0)}`}
+                          </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-bold">
-                          {selectedCustomer.resellerDiscountType === 'PERCENTAGE' 
-                            ? `Diskon ${selectedCustomer.resellerDiscountValue || 0}%` 
-                            : `Diskon ${formatRupiah(selectedCustomer.resellerDiscountValue || 0)}`}
+
+                      {/* Reseller Kasbon Stats without Deposit */}
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <div className="flex items-center justify-between bg-amber-50/60 border border-amber-200/80 rounded-lg px-2.5 py-1 text-[11px] text-amber-900">
+                          <span className="font-medium">Mitra:</span>
+                          <span className="font-bold text-amber-800">Khusus Reseller</span>
+                        </div>
+                        {selectedCustomer.totalDebt > 0 ? (
+                          <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-lg px-2.5 py-1 text-[11px] text-red-900">
+                            <span>Kasbon:</span>
+                            <span className="font-bold text-red-700 font-mono">{formatRupiah(selectedCustomer.totalDebt)}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] text-slate-600">
+                            <span>Kasbon:</span>
+                            <span className="font-semibold text-slate-700 font-mono">Rp 0</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    /* Umum Customer Saldo & Kasbon Stats */
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1 text-[11px] text-emerald-900">
+                        <span className="flex items-center gap-1 font-medium">
+                          <Wallet size={12} className="text-emerald-600" /> Saldo:
+                        </span>
+                        <span className="font-bold text-emerald-700 font-mono">
+                          {formatRupiah(selectedCustomer.depositBalance || 0)}
                         </span>
                       </div>
+                      {selectedCustomer.totalDebt > 0 ? (
+                        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1 text-[11px] text-amber-900">
+                          <span>Kasbon:</span>
+                          <span className="font-bold text-amber-700 font-mono">{formatRupiah(selectedCustomer.totalDebt)}</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] text-slate-600">
+                          <span>Kasbon:</span>
+                          <span className="font-semibold text-slate-700 font-mono">Rp 0</span>
+                        </div>
+                      )}
                     </div>
                   )}
-
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1 text-[11px] text-emerald-900">
-                      <span className="flex items-center gap-1 font-medium">
-                        <Wallet size={12} className="text-emerald-600" /> Saldo:
-                      </span>
-                      <span className="font-bold text-emerald-700 font-mono">
-                        {formatRupiah(selectedCustomer.depositBalance || 0)}
-                      </span>
-                    </div>
-                    {selectedCustomer.totalDebt > 0 ? (
-                      <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1 text-[11px] text-amber-900">
-                        <span>Kasbon:</span>
-                        <span className="font-bold text-amber-700 font-mono">{formatRupiah(selectedCustomer.totalDebt)}</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] text-slate-600">
-                        <span>Kasbon:</span>
-                        <span className="font-semibold text-slate-700 font-mono">Rp 0</span>
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
             </div>
@@ -512,7 +542,7 @@ export const POSView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Quantity adjust buttons */}
+                    {/* Quantity adjust & direct typing */}
                     <div className="flex items-center justify-between mt-1.5">
                       <button
                         onClick={() => removeFromCart(item.id)}
@@ -521,19 +551,32 @@ export const POSView: React.FC = () => {
                         <Trash2 size={12} /> Hapus
                       </button>
 
-                      <div className="flex items-center gap-1.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+                      <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
                         <button
                           onClick={() => updateCartItemQuantity(item.id, -1)}
-                          className="w-6 h-6 rounded bg-white text-slate-700 hover:bg-slate-200 flex items-center justify-center font-bold text-xs"
+                          className="w-6 h-6 rounded bg-white text-slate-700 hover:bg-slate-200 flex items-center justify-center font-bold text-xs shadow-2xs active:scale-95 transition"
+                          title="Kurangi 1"
                         >
                           <Minus size={12} />
                         </button>
-                        <span className="text-xs font-bold w-6 text-center text-slate-800">
-                          {item.quantity}
-                        </span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={e => {
+                            const val = parseInt(e.target.value, 10);
+                            if (!isNaN(val) && val > 0) {
+                              setCartItemQuantity(item.id, val);
+                            }
+                          }}
+                          onFocus={e => e.target.select()}
+                          className="w-12 h-6 text-center font-bold text-xs text-slate-900 bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                          title="Ketik jumlah pesanan langsung"
+                        />
                         <button
                           onClick={() => updateCartItemQuantity(item.id, 1)}
-                          className="w-6 h-6 rounded bg-white text-slate-700 hover:bg-slate-200 flex items-center justify-center font-bold text-xs"
+                          className="w-6 h-6 rounded bg-white text-slate-700 hover:bg-slate-200 flex items-center justify-center font-bold text-xs shadow-2xs active:scale-95 transition"
+                          title="Tambah 1"
                         >
                           <Plus size={12} />
                         </button>
@@ -683,16 +726,25 @@ export const POSView: React.FC = () => {
 
                 {/* Payment Method Switcher */}
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-700 mb-1.5">
-                    Metode Pembayaran:
-                  </label>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-[11px] font-medium text-slate-700">
+                      Metode Pembayaran:
+                    </label>
+                    {selectedCustomer?.customerType === 'RESELLER' && (
+                      <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-medium border border-amber-200">
+                        Reseller (Deposit dinonaktifkan)
+                      </span>
+                    )}
+                  </div>
+                  <div className={`grid gap-1.5 ${selectedCustomer?.customerType === 'RESELLER' ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3 sm:grid-cols-5'}`}>
                     {(
                       [
                         { id: 'TUNAI', label: 'Tunai', icon: <Banknote size={14} /> },
                         { id: 'QRIS', label: 'QRIS', icon: <QrCode size={14} /> },
                         { id: 'TRANSFER', label: 'Transfer', icon: <CreditCard size={14} /> },
-                        { id: 'SALDO_DEPOSIT', label: 'Deposit', icon: <Wallet size={14} /> },
+                        ...(selectedCustomer?.customerType !== 'RESELLER'
+                          ? [{ id: 'SALDO_DEPOSIT', label: 'Deposit', icon: <Wallet size={14} /> }]
+                          : []),
                         { id: 'KASBON', label: 'Kasbon', icon: <BookOpen size={14} /> },
                       ] as { id: PaymentMethod; label: string; icon: React.ReactNode }[]
                     ).map(m => (
@@ -957,22 +1009,58 @@ export const POSView: React.FC = () => {
               </div>
 
               {/* Quantity */}
-              <div className="flex items-center justify-between pt-2">
-                <span className="text-xs font-semibold text-slate-700">Jumlah Porsi:</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setVariantQuantity(Math.max(1, variantQuantity - 1))}
-                    className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-bold"
-                  >
-                    <Minus size={14} />
-                  </button>
-                  <span className="font-bold text-sm w-6 text-center">{variantQuantity}</span>
-                  <button
-                    onClick={() => setVariantQuantity(variantQuantity + 1)}
-                    className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-bold"
-                  >
-                    <Plus size={14} />
-                  </button>
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-700">Jumlah Porsi / Pesanan:</span>
+                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setVariantQuantity(Math.max(1, variantQuantity - 1))}
+                      className="w-7 h-7 rounded-lg bg-white hover:bg-slate-200 flex items-center justify-center font-bold text-slate-700 shadow-2xs active:scale-95 transition"
+                    >
+                      <Minus size={13} />
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      value={variantQuantity}
+                      onChange={e => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val) && val > 0) {
+                          setVariantQuantity(val);
+                        }
+                      }}
+                      onFocus={e => e.target.select()}
+                      className="w-14 h-7 text-center font-bold text-xs text-slate-900 bg-white rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                      title="Ketik jumlah porsi langsung"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setVariantQuantity(variantQuantity + 1)}
+                      className="w-7 h-7 rounded-lg bg-white hover:bg-slate-200 flex items-center justify-center font-bold text-slate-700 shadow-2xs active:scale-95 transition"
+                    >
+                      <Plus size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick preset chips */}
+                <div className="flex items-center gap-1.5 justify-end">
+                  <span className="text-[10px] text-slate-400 mr-0.5">Pilihan Cepat:</span>
+                  {[1, 2, 3, 5, 10, 20].map(qty => (
+                    <button
+                      key={qty}
+                      type="button"
+                      onClick={() => setVariantQuantity(qty)}
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition ${
+                        variantQuantity === qty
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {qty}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>

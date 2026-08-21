@@ -48,8 +48,6 @@ export const CustomersView: React.FC = () => {
     deleteCustomer,
     settleCustomerDebt,
     topUpCustomerDeposit,
-    clearCustomerDeposit,
-    clearAllResellerDeposits,
     storeSettings,
   } = useWarung();
 
@@ -110,7 +108,7 @@ export const CustomersView: React.FC = () => {
         (typeFilter === 'UMUM' && c.customerType !== 'RESELLER');
 
       const matchDebt = !filterDebtOnly || c.totalDebt > 0;
-      const matchDeposit = !filterDepositOnly || (c.depositBalance || 0) > 0;
+      const matchDeposit = !filterDepositOnly || (c.customerType !== 'RESELLER' && (c.depositBalance || 0) > 0);
       return matchSearch && matchType && matchDebt && matchDeposit;
     });
   }, [customers, searchQuery, typeFilter, filterDebtOnly, filterDepositOnly]);
@@ -118,10 +116,12 @@ export const CustomersView: React.FC = () => {
   const resellerCount = customers.filter(c => c.customerType === 'RESELLER').length;
   const umumCount = customers.filter(c => c.customerType !== 'RESELLER').length;
   const totalActiveDebt = customers.reduce((s, c) => s + (c.totalDebt || 0), 0);
-  const totalDepositBalance = customers.reduce((s, c) => s + (c.depositBalance || 0), 0);
-  const resellerDepositTotal = customers
-    .filter(c => c.customerType === 'RESELLER')
+  const totalDepositBalance = customers
+    .filter(c => c.customerType !== 'RESELLER')
     .reduce((s, c) => s + (c.depositBalance || 0), 0);
+  const umumWithDepositCount = customers.filter(
+    c => c.customerType !== 'RESELLER' && (c.depositBalance || 0) > 0
+  ).length;
 
   const openAddModal = () => {
     setEditingId(null);
@@ -146,7 +146,7 @@ export const CustomersView: React.FC = () => {
     setAddress(c.address || '');
     setResellerDiscountType(c.resellerDiscountType || 'PERCENTAGE');
     setResellerDiscountValue(c.resellerDiscountValue ?? 10);
-    setInitialDeposit(c.depositBalance ?? 0);
+    setInitialDeposit('');
     setNotes(c.notes || '');
     setShowModal(true);
   };
@@ -164,7 +164,7 @@ export const CustomersView: React.FC = () => {
         address: address.trim() || undefined,
         resellerDiscountType: customerType === 'RESELLER' ? resellerDiscountType : undefined,
         resellerDiscountValue: customerType === 'RESELLER' ? Number(resellerDiscountValue) || 0 : undefined,
-        depositBalance: Number(initialDeposit) >= 0 ? Number(initialDeposit) : 0,
+        depositBalance: customerType === 'RESELLER' ? 0 : undefined,
         notes: notes.trim() || undefined,
       });
     } else {
@@ -176,7 +176,7 @@ export const CustomersView: React.FC = () => {
         address: address.trim() || undefined,
         resellerDiscountType: customerType === 'RESELLER' ? resellerDiscountType : undefined,
         resellerDiscountValue: customerType === 'RESELLER' ? Number(resellerDiscountValue) || 0 : undefined,
-        depositBalance: Number(initialDeposit) > 0 ? Number(initialDeposit) : 0,
+        depositBalance: customerType === 'UMUM' && Number(initialDeposit) > 0 ? Number(initialDeposit) : 0,
         notes: notes.trim() || undefined,
       });
     }
@@ -271,7 +271,7 @@ export const CustomersView: React.FC = () => {
             <span className="text-slate-700 font-semibold">👤 <b>{umumCount}</b> Umum</span>
             <span className="text-slate-300">•</span>
             <span>
-              Titipan Saldo:{' '}
+              Titipan Saldo (Umum):{' '}
               <span className="font-bold text-emerald-700 font-mono">{formatRupiah(totalDepositBalance)}</span>
             </span>
             <span className="text-slate-300">•</span>
@@ -283,28 +283,6 @@ export const CustomersView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          {resellerDepositTotal > 0 && (
-            <button
-              id="clear-all-reseller-deposits-btn"
-              onClick={() => {
-                if (
-                  window.confirm(
-                    `Hapus/kosongkan seluruh saldo deposit reseller (${formatRupiah(
-                      resellerDepositTotal
-                    )}) menjadi Rp 0?`
-                  )
-                ) {
-                  clearAllResellerDeposits();
-                }
-              }}
-              className="px-3.5 py-2 bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
-              title="Hapus / Kosongkan Saldo Deposit Semua Pelanggan Reseller"
-            >
-              <Trash2 size={14} className="text-red-600" />
-              <span>Hapus Saldo Semua Reseller ({formatRupiah(resellerDepositTotal)})</span>
-            </button>
-          )}
-
           <button
             id="export-customers-excel-btn"
             onClick={() => exportCustomersToExcel(filteredCustomers, storeSettings)}
@@ -350,7 +328,7 @@ export const CustomersView: React.FC = () => {
               }`}
             >
               <Wallet size={14} />
-              <span>Ada Saldo ({customers.filter(c => (c.depositBalance || 0) > 0).length})</span>
+              <span>Ada Saldo Deposit ({umumWithDepositCount})</span>
             </button>
 
             <button
@@ -480,63 +458,43 @@ export const CustomersView: React.FC = () => {
                   <p className="text-[11px] text-slate-500 mb-2 line-clamp-1">📍 {customer.address}</p>
                 )}
 
-                {/* Saldo Deposit & Spending Card */}
+                {/* Saldo Deposit (Khusus Pelanggan Umum) & Spending Card */}
                 <div className="my-2 space-y-1.5">
-                  {/* Deposit Balance Box */}
-                  <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80 flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] text-emerald-800 font-semibold flex items-center gap-1">
-                        <Wallet size={12} className="text-emerald-600" /> SALDO DEPOSIT
-                      </span>
-                      <span className="text-sm font-bold text-emerald-950 font-mono">
-                        {formatRupiah(depositBal)}
-                      </span>
-                    </div>
+                  {/* Deposit Balance Box - Khusus Pelanggan Umum */}
+                  {!isReseller && (
+                    <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] text-emerald-800 font-semibold flex items-center gap-1">
+                          <Wallet size={12} className="text-emerald-600" /> SALDO DEPOSIT
+                        </span>
+                        <span className="text-sm font-bold text-emerald-950 font-mono">
+                          {formatRupiah(depositBal)}
+                        </span>
+                      </div>
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => {
-                          setTopUpCustomer(customer);
-                          setTopUpAmount('');
-                        }}
-                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1 shadow-xs transition"
-                        title="Top-Up Saldo Pelanggan"
-                      >
-                        <PlusCircle size={12} />
-                        <span>Top-Up</span>
-                      </button>
-
-                      {depositBal > 0 && (
+                      <div className="flex items-center gap-1">
                         <button
-                          type="button"
                           onClick={() => {
-                            if (
-                              window.confirm(
-                                `Hapus / kosongkan saldo deposit ${customer.name} sebesar ${formatRupiah(
-                                  depositBal
-                                )} menjadi Rp 0?`
-                              )
-                            ) {
-                              clearCustomerDeposit(customer.id, 'Dikosongkan oleh pengguna');
-                            }
+                            setTopUpCustomer(customer);
+                            setTopUpAmount('');
                           }}
-                          className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition"
-                          title="Hapus / Kosongkan Saldo Deposit (Set ke Rp 0)"
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1 shadow-xs transition"
+                          title="Top-Up Saldo Pelanggan Umum"
                         >
-                          <Trash2 size={12} />
-                          <span>Hapus Saldo</span>
+                          <PlusCircle size={12} />
+                          <span>Top-Up</span>
                         </button>
-                      )}
 
-                      <button
-                        onClick={() => setHistoryCustomer(customer)}
-                        className="p-1 text-emerald-800 hover:bg-emerald-100 rounded-lg transition"
-                        title="Lihat Riwayat Mutasi Saldo"
-                      >
-                        <History size={14} />
-                      </button>
+                        <button
+                          onClick={() => setHistoryCustomer(customer)}
+                          className="p-1 text-emerald-800 hover:bg-emerald-100 rounded-lg transition"
+                          title="Lihat Riwayat Mutasi Saldo"
+                        >
+                          <History size={14} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Spending stats */}
                   <div className="grid grid-cols-2 gap-2 p-2 rounded-xl bg-slate-50 border border-slate-100 text-xs">
@@ -803,40 +761,17 @@ export const CustomersView: React.FC = () => {
                     {formatRupiah(historyCustomer.depositBalance || 0)}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  {(historyCustomer.depositBalance || 0) > 0 && (
-                    <button
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `Hapus/kosongkan saldo ${historyCustomer.name} sebesar ${formatRupiah(
-                              historyCustomer.depositBalance || 0
-                            )} menjadi Rp 0?`
-                          )
-                        ) {
-                          clearCustomerDeposit(historyCustomer.id, 'Dikosongkan via modal riwayat');
-                          setHistoryCustomer(prev => (prev ? { ...prev, depositBalance: 0 } : null));
-                        }
-                      }}
-                      className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
-                      title="Kosongkan Saldo menjadi Rp 0"
-                    >
-                      <Trash2 size={13} />
-                      <span>Hapus Saldo</span>
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      const cust = historyCustomer;
-                      setHistoryCustomer(null);
-                      setTopUpCustomer(cust);
-                    }}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1"
-                  >
-                    <PlusCircle size={13} />
-                    <span>+ Top Up Saldo</span>
-                  </button>
-                </div>
+                <button
+                  onClick={() => {
+                    const cust = historyCustomer;
+                    setHistoryCustomer(null);
+                    setTopUpCustomer(cust);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1"
+                >
+                  <PlusCircle size={13} />
+                  <span>+ Top Up Saldo</span>
+                </button>
               </div>
 
               <div className="space-y-2">
@@ -850,52 +785,32 @@ export const CustomersView: React.FC = () => {
                   </div>
                 ) : (
                   [...historyCustomer.depositHistory].reverse().map(record => {
-                    const isTopUp = record.type === 'TOPUP' || record.type === 'TOP_UP' || record.type === 'REFUND';
-                    const isClear = record.type === 'CLEAR' || record.type === 'WITHDRAWAL';
-                    const remBalance = record.remainingBalance ?? (record as any).balanceAfter ?? 0;
+                    const isTopUp = record.type === 'TOP_UP';
                     return (
                       <div
                         key={record.id}
                         className={`p-3 rounded-xl border flex items-start justify-between ${
-                          isTopUp
-                            ? 'bg-emerald-50/40 border-emerald-100'
-                            : isClear
-                            ? 'bg-amber-50/50 border-amber-200'
-                            : 'bg-slate-50 border-slate-200'
+                          isTopUp ? 'bg-emerald-50/40 border-emerald-100' : 'bg-slate-50 border-slate-200'
                         }`}
                       >
                         <div className="flex items-start gap-2.5">
                           <div
                             className={`w-7 h-7 rounded-lg flex items-center justify-center mt-0.5 ${
-                              isTopUp
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : isClear
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-red-100 text-red-700'
+                              isTopUp ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'
                             }`}
                           >
-                            {isTopUp ? (
-                              <ArrowDownRight size={15} />
-                            ) : isClear ? (
-                              <Trash2 size={14} />
-                            ) : (
-                              <ArrowUpRight size={15} />
-                            )}
+                            {isTopUp ? <ArrowDownRight size={15} /> : <ArrowUpRight size={15} />}
                           </div>
                           <div>
                             <p className="font-semibold text-slate-800">
-                              {isTopUp
-                                ? 'Top-Up Saldo'
-                                : isClear
-                                ? 'Penarikan / Hapus Saldo'
-                                : 'Pembayaran Pesanan (POS)'}
+                              {isTopUp ? 'Top-Up Saldo' : 'Pembayaran Pesanan (POS)'}
                             </p>
                             <p className="text-[10px] text-slate-400">{formatDate(record.timestamp)}</p>
                             {record.notes && (
                               <p className="text-[11px] text-slate-500 italic mt-0.5">{record.notes}</p>
                             )}
                             <p className="text-[10px] text-slate-400 mt-0.5">
-                              Sisa Saldo: <span className="font-mono font-bold text-slate-700">{formatRupiah(remBalance)}</span>
+                              Sisa Saldo: <span className="font-mono font-bold text-slate-700">{formatRupiah(record.balanceAfter)}</span>
                             </p>
                           </div>
                         </div>
@@ -903,7 +818,7 @@ export const CustomersView: React.FC = () => {
                         <div className="text-right">
                           <span
                             className={`font-mono font-bold text-sm block ${
-                              isTopUp ? 'text-emerald-700' : isClear ? 'text-amber-700' : 'text-red-600'
+                              isTopUp ? 'text-emerald-700' : 'text-red-600'
                             }`}
                           >
                             {isTopUp ? `+${formatRupiah(record.amount)}` : `-${formatRupiah(record.amount)}`}
@@ -1061,44 +976,25 @@ export const CustomersView: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block font-medium text-slate-700">
-                    {editingId ? 'Saldo Deposit Pelanggan (Rp)' : 'Saldo Awal Titipan Deposit (Opsional)'}
+              {!editingId && customerType === 'UMUM' && (
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Saldo Awal Titipan Deposit (Opsional)
                   </label>
-                  {Number(initialDeposit) > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setInitialDeposit(0)}
-                      className="text-[11px] text-red-600 hover:text-red-700 font-semibold flex items-center gap-1 hover:underline"
-                    >
-                      <Trash2 size={11} />
-                      <span>Kosongkan (Rp 0)</span>
-                    </button>
-                  )}
-                </div>
-                <div className="relative">
                   <input
                     type="number"
                     min="0"
                     step="1000"
-                    placeholder="0"
+                    placeholder="Contoh: 50000 (jika langsung titip deposit)"
                     value={initialDeposit}
-                    onChange={e => setInitialDeposit(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full px-3 py-1.5 border border-slate-300 rounded-xl font-mono text-slate-800 font-bold focus:ring-2 focus:ring-blue-500"
+                    onChange={e => setInitialDeposit(Number(e.target.value) || '')}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-xl font-mono"
                   />
-                  {Number(initialDeposit) > 0 && (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono text-emerald-700 font-bold">
-                      {formatRupiah(Number(initialDeposit))}
-                    </span>
-                  )}
-                </div>
-                {editingId && (
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    * Anda dapat mengosongkan saldo menjadi Rp 0 atau mengubah nilainya secara langsung.
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Fitur titipan saldo deposit khusus untuk Pelanggan Umum.
                   </p>
-                )}
-              </div>
+                </div>
+              )}
 
               <div>
                 <label className="block font-medium text-slate-700 mb-1">

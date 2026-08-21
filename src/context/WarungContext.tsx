@@ -102,6 +102,7 @@ interface WarungContextType {
   // Cart Actions
   addToCart: (product: Product, selectedVariants?: ProductVariant[], quantity?: number, notes?: string) => void;
   updateCartItemQuantity: (cartItemId: string, delta: number) => void;
+  setCartItemQuantity: (cartItemId: string, quantity: number) => void;
   removeFromCart: (cartItemId: string) => void;
   clearCart: () => void;
   setSelectedCustomer: (customer: Customer | null) => void;
@@ -132,8 +133,6 @@ interface WarungContextType {
   deleteCustomer: (id: string) => void;
   settleCustomerDebt: (customerId: string, amount: number, notes?: string) => void;
   topUpCustomerDeposit: (customerId: string, amount: number, paymentMethod?: 'TUNAI' | 'TRANSFER' | 'QRIS', notes?: string) => void;
-  clearCustomerDeposit: (customerId: string, reason?: string) => void;
-  clearAllResellerDeposits: () => void;
 
   // Store Settings & Cloud Sync
   updateStoreSettings: (settings: Partial<StoreSettings>) => void;
@@ -202,17 +201,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const [customers, setCustomers] = useState<Customer[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-    if (!saved) return INITIAL_CUSTOMERS;
-    try {
-      const parsed: Customer[] = JSON.parse(saved);
-      return parsed.map(c =>
-        c.customerType === 'RESELLER' && (c.depositBalance || 0) > 0
-          ? { ...c, depositBalance: 0 }
-          : c
-      );
-    } catch {
-      return INITIAL_CUSTOMERS;
-    }
+    return saved ? JSON.parse(saved) : INITIAL_CUSTOMERS;
   });
 
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => {
@@ -711,6 +700,23 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
   }, []);
 
+  const setCartItemQuantity = useCallback((cartItemId: string, quantity: number) => {
+    setCart(prev => {
+      const validQty = Math.max(1, Math.floor(quantity) || 1);
+      return prev.map(item => {
+        if (item.id === cartItemId) {
+          return {
+            ...item,
+            quantity: validQty,
+            subtotal: validQty * item.finalPricePerUnit,
+            subtotalCost: validQty * item.finalCostPerUnit,
+          };
+        }
+        return item;
+      });
+    });
+  }, []);
+
   const removeFromCart = useCallback((cartItemId: string) => {
     setCart(prev => prev.filter(item => item.id !== cartItemId));
   }, []);
@@ -1004,58 +1010,6 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           const updatedCust: Customer = {
             ...c,
             depositBalance: newDeposit,
-            depositHistory: [record, ...(c.depositHistory || [])],
-          };
-          saveCustomerToFirestore(updatedCust);
-          return updatedCust;
-        }
-        return c;
-      })
-    );
-  }, []);
-
-  const clearCustomerDeposit = useCallback((customerId: string, reason?: string) => {
-    setCustomers(prev =>
-      prev.map(c => {
-        if (c.id === customerId) {
-          const currentBal = c.depositBalance || 0;
-          const record: DepositRecord = {
-            id: 'dep-' + Date.now(),
-            timestamp: new Date().toISOString(),
-            type: 'WITHDRAWAL',
-            amount: currentBal,
-            notes: reason || 'Penghapusan / Penarikan Saldo Deposit',
-            remainingBalance: 0,
-          };
-          const updatedCust: Customer = {
-            ...c,
-            depositBalance: 0,
-            depositHistory: currentBal > 0 ? [record, ...(c.depositHistory || [])] : (c.depositHistory || []),
-          };
-          saveCustomerToFirestore(updatedCust);
-          return updatedCust;
-        }
-        return c;
-      })
-    );
-  }, []);
-
-  const clearAllResellerDeposits = useCallback(() => {
-    setCustomers(prev =>
-      prev.map(c => {
-        if (c.customerType === 'RESELLER' && (c.depositBalance || 0) > 0) {
-          const currentBal = c.depositBalance || 0;
-          const record: DepositRecord = {
-            id: 'dep-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
-            timestamp: new Date().toISOString(),
-            type: 'WITHDRAWAL',
-            amount: currentBal,
-            notes: 'Penghapusan Saldo Deposit Reseller',
-            remainingBalance: 0,
-          };
-          const updatedCust: Customer = {
-            ...c,
-            depositBalance: 0,
             depositHistory: [record, ...(c.depositHistory || [])],
           };
           saveCustomerToFirestore(updatedCust);
@@ -1634,6 +1588,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         cartNotes,
         addToCart,
         updateCartItemQuantity,
+        setCartItemQuantity,
         removeFromCart,
         clearCart,
         setSelectedCustomer,
@@ -1658,8 +1613,6 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         deleteCustomer,
         settleCustomerDebt,
         topUpCustomerDeposit,
-        clearCustomerDeposit,
-        clearAllResellerDeposits,
         updateStoreSettings,
         syncWithCloud,
         clearAllDatabase,
