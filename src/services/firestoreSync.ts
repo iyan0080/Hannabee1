@@ -17,6 +17,7 @@ import {
   AppUser,
   ManualJournalEntry,
   CashClosingRecord,
+  ShoppingItem,
 } from '../types';
 
 // Collection references
@@ -29,6 +30,7 @@ export const COLLECTIONS = {
   CASH_CLOSINGS: 'cash_closings',
   STORE_SETTINGS: 'store_settings',
   USERS: 'users',
+  SHOPPING_ITEMS: 'shopping_items',
 };
 
 // ==========================================
@@ -257,6 +259,35 @@ export function subscribeToUsers(
   }
 }
 
+export function subscribeToShoppingItems(
+  onUpdate: (items: ShoppingItem[]) => void,
+  onError?: (err: Error) => void
+) {
+  try {
+    const colRef = collection(db, COLLECTIONS.SHOPPING_ITEMS);
+    return onSnapshot(
+      colRef,
+      snapshot => {
+        const items: ShoppingItem[] = [];
+        snapshot.forEach(docSnap => {
+          items.push(docSnap.data() as ShoppingItem);
+        });
+        items.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        onUpdate(items);
+      },
+      err => {
+        console.warn('Shopping items sync snapshot listener notice:', err);
+        onError?.(err);
+      }
+    );
+  } catch (err: any) {
+    console.warn('Error setting up shopping items listener:', err);
+    return () => {};
+  }
+}
+
 // ==========================================
 // DIRECT FIRESTORE MUTATIONS
 // ==========================================
@@ -387,6 +418,24 @@ export async function deleteUserFromFirestore(userId: string): Promise<void> {
   }
 }
 
+export async function saveShoppingItemToFirestore(item: ShoppingItem): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.SHOPPING_ITEMS, item.id);
+    await setDoc(docRef, JSON.parse(JSON.stringify(item)), { merge: true });
+  } catch (err) {
+    console.error('Error saving shopping item to Firestore:', err);
+  }
+}
+
+export async function deleteShoppingItemFromFirestore(itemId: string): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.SHOPPING_ITEMS, itemId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.error('Error deleting shopping item from Firestore:', err);
+  }
+}
+
 // Clear all operational documents in cloud Firestore
 export async function clearAllFirestoreDocuments(): Promise<void> {
   try {
@@ -397,6 +446,7 @@ export async function clearAllFirestoreDocuments(): Promise<void> {
       COLLECTIONS.CUSTOMERS,
       COLLECTIONS.MANUAL_JOURNALS,
       COLLECTIONS.CASH_CLOSINGS,
+      COLLECTIONS.SHOPPING_ITEMS,
     ];
 
     for (const colName of collectionsToClear) {
@@ -422,6 +472,7 @@ export async function pushFullDatabaseToFirestore(data: {
   cashClosings: CashClosingRecord[];
   storeSettings: StoreSettings;
   users: AppUser[];
+  shoppingItems?: ShoppingItem[];
 }): Promise<boolean> {
   try {
     // 1. Products
@@ -453,6 +504,12 @@ export async function pushFullDatabaseToFirestore(data: {
     // 8. Users
     for (const u of data.users) {
       await saveUserToFirestore(u);
+    }
+    // 9. Shopping Items
+    if (data.shoppingItems) {
+      for (const s of data.shoppingItems) {
+        await saveShoppingItemToFirestore(s);
+      }
     }
 
     return true;

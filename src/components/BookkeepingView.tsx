@@ -25,6 +25,8 @@ import {
   CashDenomination,
   CashClosingRecord,
   JournalEntryItem,
+  Transaction,
+  AutoJournalMode,
 } from '../types';
 import {
   BookOpen,
@@ -58,14 +60,26 @@ import {
   ChevronRight,
   X,
   CreditCard,
+  Zap,
+  SlidersHorizontal,
+  Eye,
+  Tag,
+  Sparkles,
+  Layers,
+  ShoppingBag,
+  Receipt,
+  Info,
 } from 'lucide-react';
 
 type BookkeepingTab = 'ledger' | 'closing' | 'cash_flow';
 type PeriodOption = 'today' | '7days' | 'this_month' | 'last_month' | 'custom';
+type SourceFilterOption = 'ALL' | 'POS_AUTO' | 'POS_SALE' | 'POS_REFUND' | 'EXPENSE' | 'DEBT_DEPOSIT' | 'MANUAL';
 
 export const BookkeepingView: React.FC = () => {
   const {
     storeSettings,
+    updateStoreSettings,
+    transactions,
     currentUser,
     manualJournals,
     cashClosings,
@@ -90,6 +104,8 @@ export const BookkeepingView: React.FC = () => {
   const [customEndDate, setCustomEndDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [selectedAccount, setSelectedAccount] = useState<CashAccountType | 'ALL'>('ALL');
   const [selectedType, setSelectedType] = useState<'ALL' | 'KAS_MASUK' | 'KAS_KELUAR'>('ALL');
+  const [selectedSourceFilter, setSelectedSourceFilter] = useState<SourceFilterOption>('ALL');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Modal State for Manual Entry
@@ -101,6 +117,10 @@ export const BookkeepingView: React.FC = () => {
   const [entryAccount, setEntryAccount] = useState<CashAccountType>('KAS_TUNAI');
   const [entryParty, setEntryParty] = useState<string>('');
   const [entryNotes, setEntryNotes] = useState<string>('');
+
+  // Auto-Jurnal POS Interaction State
+  const [selectedAutoJournalTrx, setSelectedAutoJournalTrx] = useState<Transaction | null>(null);
+  const [isAutoJournalSettingsOpen, setIsAutoJournalSettingsOpen] = useState<boolean>(false);
 
   // Cash Closing Calculator State
   const [cashierName, setCashierName] = useState<string>(currentUser?.name || storeSettings.cashierName || 'Kasir');
@@ -153,17 +173,88 @@ export const BookkeepingView: React.FC = () => {
     const raw = getAllJournalEntries(startDate, endDate, selectedAccount);
     return raw.filter(item => {
       if (selectedType !== 'ALL' && item.type !== selectedType) return false;
+
+      // Source Filter
+      if (selectedSourceFilter !== 'ALL') {
+        if (selectedSourceFilter === 'POS_AUTO') {
+          if (item.sourceType !== 'POS_AUTO_SALE' && item.sourceType !== 'POS_AUTO_REFUND' && !item.isAutoJournal) {
+            return false;
+          }
+        } else if (selectedSourceFilter === 'POS_SALE') {
+          if (item.sourceType !== 'POS_AUTO_SALE' && item.referenceType !== 'TRANSACTION') return false;
+        } else if (selectedSourceFilter === 'POS_REFUND') {
+          if (item.sourceType !== 'POS_AUTO_REFUND') return false;
+        } else if (selectedSourceFilter === 'EXPENSE') {
+          if (item.sourceType !== 'OPERATIONAL_EXPENSE' && item.referenceType !== 'EXPENSE') return false;
+        } else if (selectedSourceFilter === 'DEBT_DEPOSIT') {
+          if (
+            item.sourceType !== 'POS_DEBT_SETTLEMENT' &&
+            item.sourceType !== 'CUSTOMER_DEPOSIT_TOPUP' &&
+            item.referenceType !== 'DEBT_SETTLEMENT' &&
+            item.referenceType !== 'DEPOSIT_TOPUP'
+          ) {
+            return false;
+          }
+        } else if (selectedSourceFilter === 'MANUAL') {
+          if (item.sourceType !== 'MANUAL_JOURNAL' && item.referenceType !== 'MANUAL') return false;
+        }
+      }
+
+      // Category Filter
+      if (selectedCategoryFilter !== 'ALL' && item.category !== selectedCategoryFilter) {
+        return false;
+      }
+
+      // Search Query
       if (searchQuery.trim() !== '') {
         const q = searchQuery.toLowerCase();
         const matchesTitle = item.title.toLowerCase().includes(q);
         const matchesCat = item.category.toLowerCase().includes(q);
         const matchesNotes = (item.notes || '').toLowerCase().includes(q);
         const matchesActor = (item.actorName || '').toLowerCase().includes(q);
-        if (!matchesTitle && !matchesCat && !matchesNotes && !matchesActor) return false;
+        const matchesInv = (item.invoiceNumber || '').toLowerCase().includes(q);
+        const matchesCust = (item.customerName || '').toLowerCase().includes(q);
+        if (!matchesTitle && !matchesCat && !matchesNotes && !matchesActor && !matchesInv && !matchesCust) {
+          return false;
+        }
       }
       return true;
     });
-  }, [getAllJournalEntries, startDate, endDate, selectedAccount, selectedType, searchQuery]);
+  }, [getAllJournalEntries, startDate, endDate, selectedAccount, selectedType, selectedSourceFilter, selectedCategoryFilter, searchQuery]);
+
+  // Dynamic available categories for filter dropdown
+  const availableCategories = useMemo(() => {
+    const raw = getAllJournalEntries(startDate, endDate, 'ALL');
+    const set = new Set<string>();
+    raw.forEach(e => {
+      if (e.category) set.add(e.category);
+    });
+    return Array.from(set).sort();
+  }, [getAllJournalEntries, startDate, endDate]);
+
+  // Auto-Jurnal POS Classification Metrics for active period
+  const autoJournalMetrics = useMemo(() => {
+    const rawPeriodEntries = getAllJournalEntries(startDate, endDate, 'ALL');
+    const posSalesEntries = rawPeriodEntries.filter(e => e.sourceType === 'POS_AUTO_SALE' || e.referenceType === 'TRANSACTION');
+    const posRefundEntries = rawPeriodEntries.filter(e => e.sourceType === 'POS_AUTO_REFUND');
+
+    const totalPosSales = posSalesEntries.reduce((sum, e) => sum + e.amount, 0);
+    const totalPosRefunds = posRefundEntries.reduce((sum, e) => sum + e.amount, 0);
+
+    const categoryBreakdown: { [cat: string]: number } = {};
+    posSalesEntries.forEach(e => {
+      categoryBreakdown[e.category] = (categoryBreakdown[e.category] || 0) + e.amount;
+    });
+
+    return {
+      totalPosSales,
+      totalPosRefunds,
+      netPosCash: totalPosSales - totalPosRefunds,
+      categoryBreakdown,
+      salesCount: posSalesEntries.length,
+      refundCount: posRefundEntries.length,
+    };
+  }, [getAllJournalEntries, startDate, endDate]);
 
   // Overall account balances (Total All Time)
   const accountBalances = useMemo(() => {
@@ -460,6 +551,90 @@ export const BookkeepingView: React.FC = () => {
             </div>
           </div>
 
+          {/* Auto-Jurnal POS Real-Time Synchronization Banner */}
+          <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-emerald-500/10 border border-amber-200/80 p-4 rounded-2xl shadow-2xs space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                  <Zap className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-slate-800 text-sm">Auto-Jurnal Kasir POS & Klasifikasi Kategori</h3>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      {storeSettings.autoJournalEnabled !== false ? 'Aktif Real-Time' : 'Non-Aktif'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Mode:{' '}
+                    <span className="font-semibold text-slate-700">
+                      {storeSettings.autoJournalMode === 'SIMPLE_PER_INVOICE'
+                        ? 'Ringkas per Nota Kasir'
+                        : 'Rinci per Kategori Menu (Makanan, Minuman, Sembako, dll.)'}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  id="btn-open-auto-journal-settings"
+                  onClick={() => setIsAutoJournalSettingsOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold shadow-2xs transition-colors"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Pengaturan Auto-Jurnal</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Auto-Jurnal Metric Breakdown per Category */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              <div className="bg-white/80 backdrop-blur-xs p-3 rounded-xl border border-amber-100/80">
+                <span className="text-[11px] font-semibold text-slate-500">Total Omzet POS Terklasifikasi</span>
+                <p className="text-base font-bold text-slate-800 mt-0.5">{formatRupiah(autoJournalMetrics.totalPosSales)}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">{autoJournalMetrics.salesCount} transaksi terhubung</p>
+              </div>
+
+              <div className="bg-white/80 backdrop-blur-xs p-3 rounded-xl border border-amber-100/80">
+                <span className="text-[11px] font-semibold text-slate-500">Retur / Pengembalian Kasir</span>
+                <p className="text-base font-bold text-rose-600 mt-0.5">{formatRupiah(autoJournalMetrics.totalPosRefunds)}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">{autoJournalMetrics.refundCount} transaksi retur</p>
+              </div>
+
+              <div className="bg-white/80 backdrop-blur-xs p-3 rounded-xl border border-amber-100/80">
+                <span className="text-[11px] font-semibold text-slate-500">Pemasukan Bersih POS</span>
+                <p className="text-base font-bold text-emerald-700 mt-0.5">{formatRupiah(autoJournalMetrics.netPosCash)}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Otomatis masuk ke Buku Kas</p>
+              </div>
+            </div>
+
+            {/* Category Tags Cloud */}
+            {Object.keys(autoJournalMetrics.categoryBreakdown).length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-amber-200/50">
+                <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1 mr-1">
+                  <Tag className="w-3 h-3 text-amber-600" />
+                  Rincian Kategori:
+                </span>
+                {Object.entries(autoJournalMetrics.categoryBreakdown).map(([cat, amount]) => (
+                  <span
+                    key={cat}
+                    onClick={() => setSelectedCategoryFilter(selectedCategoryFilter === cat ? 'ALL' : cat)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer transition-colors ${
+                      selectedCategoryFilter === cat
+                        ? 'bg-amber-600 text-white shadow-2xs'
+                        : 'bg-white/90 text-slate-700 hover:bg-white border border-amber-100'
+                    }`}
+                  >
+                    <span>{cat}:</span>
+                    <span className="font-bold">{formatRupiah(amount as number)}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Filter Bar & Export Actions */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -529,16 +704,17 @@ export const BookkeepingView: React.FC = () => {
               </div>
             )}
 
-            {/* Sub-Filters: Account, In/Out Type, and Search */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
+            {/* Sub-Filters: Account, Source, Category, Type, Search */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 pt-2 border-t border-slate-100">
               {/* Account Filter */}
               <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">Saluran Kas</label>
                 <select
                   value={selectedAccount}
                   onChange={e => setSelectedAccount(e.target.value as any)}
-                  className="w-full px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                  className="w-full px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-amber-500"
                 >
-                  <option value="ALL">Semua Saluran Kas (Semua Akun)</option>
+                  <option value="ALL">Semua Saluran Kas</option>
                   <option value="KAS_TUNAI">Kas Tunai (Laci)</option>
                   <option value="BANK_TRANSFER">Rekening Bank</option>
                   <option value="QRIS">QRIS</option>
@@ -546,29 +722,68 @@ export const BookkeepingView: React.FC = () => {
                 </select>
               </div>
 
+              {/* Source Filter */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">Sumber Mutasi</label>
+                <select
+                  value={selectedSourceFilter}
+                  onChange={e => setSelectedSourceFilter(e.target.value as any)}
+                  className="w-full px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                >
+                  <option value="ALL">Semua Sumber</option>
+                  <option value="POS_AUTO">⚡ Auto-Jurnal POS (Semua)</option>
+                  <option value="POS_SALE">⚡ Penjualan POS Kasir</option>
+                  <option value="POS_REFUND">⚡ Retur / Refund Kasir</option>
+                  <option value="EXPENSE">💼 Beban Operasional Warung</option>
+                  <option value="DEBT_DEPOSIT">👥 Pelunasan Kasbon / Deposit</option>
+                  <option value="MANUAL">📝 Jurnal Umum Manual</option>
+                </select>
+              </div>
+
+              {/* Category Filter */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">Kategori Mutasi</label>
+                <select
+                  value={selectedCategoryFilter}
+                  onChange={e => setSelectedCategoryFilter(e.target.value)}
+                  className="w-full px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                >
+                  <option value="ALL">Semua Kategori ({availableCategories.length})</option>
+                  {availableCategories.map(c => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* In/Out Filter */}
               <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">Arah Mutasi</label>
                 <select
                   value={selectedType}
                   onChange={e => setSelectedType(e.target.value as any)}
-                  className="w-full px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                  className="w-full px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-amber-500"
                 >
-                  <option value="ALL">Semua Mutasi (Masuk & Keluar)</option>
+                  <option value="ALL">Semua (Masuk & Keluar)</option>
                   <option value="KAS_MASUK">Hanya Kas Masuk (+ Debit)</option>
                   <option value="KAS_KELUAR">Hanya Kas Keluar (- Kredit)</option>
                 </select>
               </div>
 
               {/* Search */}
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                <input
-                  type="text"
-                  placeholder="Cari transaksi, kategori, atau nama..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-hidden focus:ring-1 focus:ring-amber-500"
-                />
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">Pencarian</label>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Nota, kategori, nama..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -594,7 +809,11 @@ export const BookkeepingView: React.FC = () => {
             <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold text-slate-700">Selisih Kas Bersih Periode</p>
-                <p className={`text-lg font-bold mt-0.5 ${accountBalances.periodIn - accountBalances.periodOut >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                <p
+                  className={`text-lg font-bold mt-0.5 ${
+                    accountBalances.periodIn - accountBalances.periodOut >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                  }`}
+                >
                   {formatRupiah(accountBalances.periodIn - accountBalances.periodOut)}
                 </p>
               </div>
@@ -609,6 +828,18 @@ export const BookkeepingView: React.FC = () => {
                 <h3 className="font-bold text-slate-800 text-sm">Buku Mutasi Kas & Jurnal Transaksi</h3>
                 <p className="text-xs text-slate-400">Menampilkan {allFilteredEntries.length} baris pencatatan</p>
               </div>
+              {selectedSourceFilter !== 'ALL' && (
+                <button
+                  onClick={() => {
+                    setSelectedSourceFilter('ALL');
+                    setSelectedCategoryFilter('ALL');
+                  }}
+                  className="text-xs text-amber-600 hover:text-amber-700 font-semibold flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>Reset Filter</span>
+                </button>
+              )}
             </div>
 
             <div className="overflow-x-auto">
@@ -635,61 +866,98 @@ export const BookkeepingView: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    allFilteredEntries.map((item, idx) => (
-                      <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
-                          {formatDate(item.timestamp)}
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex flex-col">
-                            <span
-                              className={`inline-flex items-center gap-1 font-semibold text-[11px] px-2 py-0.5 rounded-md w-max ${
-                                item.type === 'KAS_MASUK'
-                                  ? 'bg-emerald-50 text-emerald-700'
-                                  : 'bg-rose-50 text-rose-700'
-                              }`}
-                            >
-                              {item.type === 'KAS_MASUK' ? <ArrowDownLeft className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
-                              {item.type === 'KAS_MASUK' ? 'MASUK' : 'KELUAR'}
+                    allFilteredEntries.map((item, idx) => {
+                      const isAutoPos = item.sourceType === 'POS_AUTO_SALE' || item.sourceType === 'POS_AUTO_REFUND' || item.isAutoJournal;
+                      const hasTrxRef = item.referenceType === 'TRANSACTION';
+
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
+                            {formatDate(item.timestamp)}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1">
+                                <span
+                                  className={`inline-flex items-center gap-0.5 font-semibold text-[10px] px-1.5 py-0.5 rounded-md ${
+                                    item.type === 'KAS_MASUK'
+                                      ? 'bg-emerald-50 text-emerald-700'
+                                      : 'bg-rose-50 text-rose-700'
+                                  }`}
+                                >
+                                  {item.type === 'KAS_MASUK' ? <ArrowDownLeft className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
+                                  {item.type === 'KAS_MASUK' ? 'MASUK' : 'KELUAR'}
+                                </span>
+
+                                {isAutoPos && (
+                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200" title="Dicatat otomatis dari Modul Kasir POS">
+                                    <Zap className="w-2.5 h-2.5 text-amber-600 fill-amber-500" />
+                                    POS
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-slate-800 font-semibold text-xs mt-0.5">{item.category}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 max-w-xs">
+                            <p className="font-semibold text-slate-800">{item.title}</p>
+                            {item.notes && <p className="text-slate-400 text-[11px] truncate mt-0.5">{item.notes}</p>}
+                            {item.customerName && (
+                              <p className="text-slate-500 text-[10px] mt-0.5">Pelanggan: {item.customerName}</p>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <span className="px-2 py-0.5 text-[11px] rounded-md bg-slate-100 text-slate-700 font-medium">
+                              {item.accountLabel}
                             </span>
-                            <span className="text-slate-700 font-medium mt-0.5 text-xs">{item.category}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 max-w-xs">
-                          <p className="font-semibold text-slate-800">{item.title}</p>
-                          {item.notes && <p className="text-slate-400 text-[11px] truncate mt-0.5">{item.notes}</p>}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          <span className="px-2 py-0.5 text-[11px] rounded-md bg-slate-100 text-slate-700 font-medium">
-                            {item.accountLabel}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-right font-bold text-emerald-600 whitespace-nowrap">
-                          {item.type === 'KAS_MASUK' ? formatRupiah(item.amount) : '-'}
-                        </td>
-                        <td className="py-3 px-4 text-right font-bold text-rose-600 whitespace-nowrap">
-                          {item.type === 'KAS_KELUAR' ? formatRupiah(item.amount) : '-'}
-                        </td>
-                        <td className="py-3 px-4 text-right font-extrabold text-slate-800 whitespace-nowrap">
-                          {item.runningBalance !== undefined ? formatRupiah(item.runningBalance) : '-'}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          {item.referenceType === 'MANUAL' && (
-                            <button
-                              onClick={() => {
-                                if (window.confirm(`Hapus catatan pembukuan "${item.title}"?`)) {
-                                  deleteManualJournalEntry(item.id);
-                                }
-                              }}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors"
-                              title="Hapus Jurnal Manual"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))
+                          </td>
+                          <td className="py-3 px-4 text-right font-bold text-emerald-600 whitespace-nowrap">
+                            {item.type === 'KAS_MASUK' ? formatRupiah(item.amount) : '-'}
+                          </td>
+                          <td className="py-3 px-4 text-right font-bold text-rose-600 whitespace-nowrap">
+                            {item.type === 'KAS_KELUAR' ? formatRupiah(item.amount) : '-'}
+                          </td>
+                          <td className="py-3 px-4 text-right font-extrabold text-slate-800 whitespace-nowrap">
+                            {item.runningBalance !== undefined ? formatRupiah(item.runningBalance) : '-'}
+                          </td>
+                          <td className="py-3 px-4 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1">
+                              {hasTrxRef && (
+                                <button
+                                  onClick={() => {
+                                    const foundTrx = transactions.find(t => t.id === item.referenceId);
+                                    if (foundTrx) {
+                                      setSelectedAutoJournalTrx(foundTrx);
+                                    } else {
+                                      alert(`Detail transaksi dengan ID ${item.referenceId} tidak ditemukan.`);
+                                    }
+                                  }}
+                                  className="p-1.5 text-amber-600 hover:text-amber-700 rounded-md hover:bg-amber-50 transition-colors flex items-center gap-1 text-[11px] font-medium"
+                                  title="Lihat Nota & Rincian Kasir POS"
+                                >
+                                  <Receipt className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">Nota</span>
+                                </button>
+                              )}
+
+                              {item.referenceType === 'MANUAL' && (
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm(`Hapus catatan pembukuan "${item.title}"?`)) {
+                                      deleteManualJournalEntry(item.id);
+                                    }
+                                  }}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors"
+                                  title="Hapus Jurnal Manual"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -1516,6 +1784,210 @@ export const BookkeepingView: React.FC = () => {
                 className="w-full py-2 px-4 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold text-xs"
               >
                 Tutup Jendela
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* QUICK AUTO-JOURNAL SETTINGS MODAL */}
+      {/* ========================================================================= */}
+      {isAutoJournalSettingsOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
+                  <Zap className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">Pengaturan Auto-Jurnal Kasir POS</h3>
+                  <p className="text-xs text-slate-400">Konfigurasi otomatisasi pencatatan dari kasir ke buku kas</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAutoJournalSettingsOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Toggle Aktif */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <div>
+                  <p className="font-bold text-slate-800">Aktifkan Auto-Jurnal Penjualan</p>
+                  <p className="text-slate-500 text-[11px] mt-0.5">
+                    Setiap transaksi kasir langsung tercatat ke Buku Mutasi Kas tanpa input manual
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={storeSettings.autoJournalEnabled !== false}
+                    onChange={e => updateStoreSettings({ autoJournalEnabled: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                </label>
+              </div>
+
+              {/* Mode Selection */}
+              <div className="space-y-2">
+                <label className="font-bold text-slate-800 block">Metode Klasifikasi Jurnal</label>
+
+                <div
+                  onClick={() => updateStoreSettings({ autoJournalMode: 'DETAILED_PER_CATEGORY' })}
+                  className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                    storeSettings.autoJournalMode !== 'SIMPLE_PER_INVOICE'
+                      ? 'bg-amber-50/70 border-amber-300 shadow-2xs'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800">Rinci per Kategori Menu (Direkomendasikan)</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+                      Presisi
+                    </span>
+                  </div>
+                  <p className="text-slate-500 text-[11px] mt-1">
+                    Jika 1 nota berisi Makanan (Rp 30.000) dan Minuman (Rp 15.000), buku kas mencatat 2 baris terpisah sesuai kategori untuk analisis laba yang akurat.
+                  </p>
+                </div>
+
+                <div
+                  onClick={() => updateStoreSettings({ autoJournalMode: 'SIMPLE_PER_INVOICE' })}
+                  className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                    storeSettings.autoJournalMode === 'SIMPLE_PER_INVOICE'
+                      ? 'bg-amber-50/70 border-amber-300 shadow-2xs'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <span className="font-bold text-slate-800">Ringkas per Nota Kasir (1 Baris per Transaksi)</span>
+                  <p className="text-slate-500 text-[11px] mt-1">
+                    Setiap transaksi dicatat sebagai 1 baris akumulatif 'Penjualan Kasir POS' tanpa memecah kategori menu.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 flex items-start gap-2">
+                <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p>
+                  Perubahan pengaturan berlaku seketika secara real-time pada seluruh tampilan mutasi, laporan laba rugi, dan rekap tutup kas.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setIsAutoJournalSettingsOpen(false)}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs transition-colors"
+              >
+                Selesai & Simpan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* POS TRANSACTION RECEIPT MODAL */}
+      {/* ========================================================================= */}
+      {selectedAutoJournalTrx && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
+                  <Receipt className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">Rincian Nota Transaksi POS</h3>
+                  <p className="text-xs text-slate-400">Invoice: {selectedAutoJournalTrx.invoiceNumber || selectedAutoJournalTrx.id}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedAutoJournalTrx(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              {/* Meta Info */}
+              <div className="p-3 bg-slate-50 rounded-xl space-y-1.5 border border-slate-200">
+                <div className="flex justify-between text-slate-600">
+                  <span>Waktu Transaksi:</span>
+                  <span className="font-semibold text-slate-800">{formatDate(selectedAutoJournalTrx.timestamp)}</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Kasir Bertugas:</span>
+                  <span className="font-semibold text-slate-800">{selectedAutoJournalTrx.cashierName || 'Kasir'}</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Metode Pembayaran:</span>
+                  <span className="font-bold text-amber-700">
+                    {selectedAutoJournalTrx.paymentMethod === 'TUNAI' && 'Kas Tunai'}
+                    {selectedAutoJournalTrx.paymentMethod === 'BANK_TRANSFER' && 'Bank Transfer'}
+                    {selectedAutoJournalTrx.paymentMethod === 'QRIS' && 'QRIS'}
+                    {selectedAutoJournalTrx.paymentMethod === 'SALDO_DEPOSIT' && 'Saldo Deposit'}
+                    {selectedAutoJournalTrx.paymentMethod === 'KASBON' && 'Kasbon / Hutang'}
+                  </span>
+                </div>
+                {selectedAutoJournalTrx.customerName && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Pelanggan:</span>
+                    <span className="font-semibold text-slate-800">{selectedAutoJournalTrx.customerName}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Items List */}
+              <div>
+                <p className="font-bold text-slate-800 mb-2">Daftar Item Belanja ({selectedAutoJournalTrx.items?.length || 0})</p>
+                <div className="space-y-1.5 divide-y divide-slate-100 max-h-48 overflow-y-auto">
+                  {selectedAutoJournalTrx.items?.map((item: any, idx: number) => (
+                    <div key={idx} className="pt-1.5 flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-800">{item.name}</p>
+                        <p className="text-[11px] text-slate-400">
+                          {item.quantity} x {formatRupiah(item.price)} • Kategori: <span className="font-medium text-slate-600">{item.category || 'Umum'}</span>
+                        </p>
+                      </div>
+                      <span className="font-bold text-slate-800">{formatRupiah(item.subtotal || item.price * item.quantity)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Total Calculation */}
+              <div className="p-3 bg-slate-50 rounded-xl space-y-1 border border-slate-200">
+                <div className="flex justify-between text-slate-600">
+                  <span>Subtotal:</span>
+                  <span className="font-medium">{formatRupiah(selectedAutoJournalTrx.subtotal || selectedAutoJournalTrx.total)}</span>
+                </div>
+                {selectedAutoJournalTrx.discountAmount ? (
+                  <div className="flex justify-between text-rose-600">
+                    <span>Diskon:</span>
+                    <span className="font-semibold">-{formatRupiah(selectedAutoJournalTrx.discountAmount)}</span>
+                  </div>
+                ) : null}
+                <div className="flex justify-between text-sm font-extrabold text-slate-900 pt-1 border-t border-slate-200">
+                  <span>Total Transaksi:</span>
+                  <span className="text-emerald-600">{formatRupiah(selectedAutoJournalTrx.total)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setSelectedAutoJournalTrx(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors"
+              >
+                Tutup
               </button>
             </div>
           </div>

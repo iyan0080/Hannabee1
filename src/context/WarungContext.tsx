@@ -1563,59 +1563,205 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     deleteCashClosingFromFirestore(id);
   }, []);
 
-  // Aggregate All Journal Entries (POS, Kasbon Settlement, Deposit Topup, Expenses, Manual)
+  // Aggregate All Journal Entries (Auto-Jurnal POS, Kasbon Settlement, Deposit Topup, Expenses, Manual)
   const getAllJournalEntries = useCallback((
     startDate?: Date,
     endDate?: Date,
     accountFilter: CashAccountType | 'ALL' = 'ALL'
   ): JournalEntryItem[] => {
     const rawItems: Omit<JournalEntryItem, 'runningBalance'>[] = [];
+    const isAutoJournalActive = storeSettings.autoJournalEnabled !== false;
+    const autoMode = storeSettings.autoJournalMode || 'DETAILED_PER_CATEGORY';
 
-    // 1. Transactions (Penjualan Kasir)
-    transactions.forEach(t => {
-      if (t.status === 'BATAL') return;
-      if (t.finalAmount <= 0) return;
+    // 1. Transactions (Auto-Jurnal Penjualan Kasir POS)
+    if (isAutoJournalActive) {
+      transactions.forEach(t => {
+        // Skip cancelled invoices with no payment or handle refund
+        if (t.status === 'BATAL') {
+          // If transaction was paid before cancellation, record refund entry
+          if (t.finalAmount > 0 && t.paymentMethod !== 'KASBON') {
+            let account: CashAccountType = 'KAS_TUNAI';
+            let accountLabel = 'Kas Tunai (Laci)';
+            if (t.paymentMethod === 'QRIS') {
+              account = 'QRIS';
+              accountLabel = 'QRIS';
+            } else if (t.paymentMethod === 'TRANSFER') {
+              account = 'BANK_TRANSFER';
+              accountLabel = 'Rekening Bank';
+            } else if (t.paymentMethod === 'SALDO_DEPOSIT') {
+              account = 'SALDO_DEPOSIT';
+              accountLabel = 'Saldo Deposit';
+            }
 
-      let account: CashAccountType = 'KAS_TUNAI';
-      let accountLabel = 'Kas Tunai (Laci)';
-      if (t.paymentMethod === 'QRIS') {
-        account = 'QRIS';
-        accountLabel = 'QRIS';
-      } else if (t.paymentMethod === 'TRANSFER') {
-        account = 'BANK_TRANSFER';
-        accountLabel = 'Rekening Bank';
-      } else if (t.paymentMethod === 'SALDO_DEPOSIT') {
-        account = 'SALDO_DEPOSIT';
-        accountLabel = 'Saldo Deposit';
-      } else if (t.paymentMethod === 'KASBON') {
-        if (t.amountPaid <= 0) return;
-      }
+            rawItems.push({
+              id: `trx-cancel-${t.id}`,
+              timestamp: t.cancelledAt || t.timestamp,
+              dateStr: (t.cancelledAt || t.timestamp).slice(0, 10),
+              type: 'KAS_KELUAR',
+              category: 'Pengembalian Dana / Retur Penjualan',
+              title: `Auto-Jurnal: Pembatalan Nota ${t.invoiceNumber} (${t.customerName || 'Pelanggan'})`,
+              amount: t.finalAmount,
+              account,
+              accountLabel,
+              referenceType: 'TRANSACTION',
+              referenceId: t.id,
+              sourceType: 'POS_AUTO_REFUND',
+              isAutoJournal: true,
+              invoiceNumber: t.invoiceNumber,
+              customerName: t.customerName,
+              notes: `Alasan Pembatalan: ${t.cancellationReason || 'Pembatalan transaksi oleh kasir'}`,
+              actorName: t.cashierName || 'Kasir',
+            });
+          }
+          return;
+        }
 
-      const rawAmount = t.paymentMethod === 'KASBON' ? t.amountPaid : t.finalAmount;
-      const netAmount = t.status === 'DIRETUR_SEBAGIAN' 
-        ? Math.max(0, rawAmount - (t.totalReturnedAmount || 0)) 
-        : rawAmount;
+        if (t.finalAmount <= 0) return;
 
-      if (netAmount <= 0) return;
+        let account: CashAccountType = 'KAS_TUNAI';
+        let accountLabel = 'Kas Tunai (Laci)';
+        if (t.paymentMethod === 'QRIS') {
+          account = 'QRIS';
+          accountLabel = 'QRIS';
+        } else if (t.paymentMethod === 'TRANSFER') {
+          account = 'BANK_TRANSFER';
+          accountLabel = 'Rekening Bank';
+        } else if (t.paymentMethod === 'SALDO_DEPOSIT') {
+          account = 'SALDO_DEPOSIT';
+          accountLabel = 'Saldo Deposit';
+        } else if (t.paymentMethod === 'KASBON') {
+          // Kasbon piutang: if partial payment was given upfront, record it
+          if (t.amountPaid <= 0) return;
+        }
 
-      rawItems.push({
-        id: `trx-${t.id}`,
-        timestamp: t.timestamp,
-        dateStr: t.timestamp.slice(0, 10),
-        type: 'KAS_MASUK',
-        category: 'Penjualan Kasir',
-        title: `Penjualan Nota ${t.invoiceNumber} (${t.customerName || 'Pelanggan Umum'})${t.status === 'DIRETUR_SEBAGIAN' ? ' [Retur Sebagian]' : ''}`,
-        amount: netAmount,
-        account,
-        accountLabel,
-        referenceType: 'TRANSACTION',
-        referenceId: t.id,
-        notes: t.items.map(i => `${i.productName} (${i.quantity}x)`).join(', '),
-        actorName: t.cashierName || 'Kasir',
+        const rawAmount = t.paymentMethod === 'KASBON' ? t.amountPaid : t.finalAmount;
+        const netTotalInvoice = t.status === 'DIRETUR_SEBAGIAN' 
+          ? Math.max(0, rawAmount - (t.totalReturnedAmount || 0)) 
+          : rawAmount;
+
+        if (netTotalInvoice <= 0) return;
+
+        // Mode A: Detailed Per Category Classification
+        if (autoMode === 'DETAILED_PER_CATEGORY' && t.items.length > 0) {
+          // Group items by category
+          const categoryGroups: { [cat: string]: { items: typeof t.items; subtotal: number } } = {};
+          let grossCartSubtotal = 0;
+
+          t.items.forEach(item => {
+            const product = products.find(p => p.id === item.productId);
+            const category = product?.category || 'Lainnya';
+            if (!categoryGroups[category]) {
+              categoryGroups[category] = { items: [], subtotal: 0 };
+            }
+            categoryGroups[category].items.push(item);
+            categoryGroups[category].subtotal += item.subtotal;
+            grossCartSubtotal += item.subtotal;
+          });
+
+          // Proportional allocation of net amount to categories
+          const categories = Object.keys(categoryGroups);
+          let allocatedSoFar = 0;
+
+          categories.forEach((cat, idx) => {
+            const group = categoryGroups[cat];
+            let allocatedAmount = 0;
+            if (grossCartSubtotal > 0) {
+              if (idx === categories.length - 1) {
+                // Last item takes remaining to prevent rounding drift
+                allocatedAmount = Math.max(0, netTotalInvoice - allocatedSoFar);
+              } else {
+                allocatedAmount = Math.round((group.subtotal / grossCartSubtotal) * netTotalInvoice);
+                allocatedSoFar += allocatedAmount;
+              }
+            } else {
+              allocatedAmount = netTotalInvoice;
+            }
+
+            if (allocatedAmount > 0) {
+              const categoryJournalName = `Penjualan ${cat}`;
+              rawItems.push({
+                id: `trx-${t.id}-${cat.replace(/\s+/g, '_')}`,
+                timestamp: t.timestamp,
+                dateStr: t.timestamp.slice(0, 10),
+                type: 'KAS_MASUK',
+                category: categoryJournalName,
+                title: `Auto-Jurnal: Penjualan ${cat} (Nota ${t.invoiceNumber} - ${t.customerName || 'Pelanggan'})`,
+                amount: allocatedAmount,
+                account,
+                accountLabel,
+                referenceType: 'TRANSACTION',
+                referenceId: t.id,
+                sourceType: 'POS_AUTO_SALE',
+                isAutoJournal: true,
+                invoiceNumber: t.invoiceNumber,
+                productCategory: cat,
+                customerName: t.customerName,
+                notes: group.items.map(i => `${i.productName} (${i.quantity}x)`).join(', '),
+                actorName: t.cashierName || 'Kasir',
+              });
+            }
+          });
+        } else {
+          // Mode B: Simple Per Invoice Classification
+          rawItems.push({
+            id: `trx-${t.id}`,
+            timestamp: t.timestamp,
+            dateStr: t.timestamp.slice(0, 10),
+            type: 'KAS_MASUK',
+            category: 'Penjualan Kasir',
+            title: `Auto-Jurnal: Penjualan Nota ${t.invoiceNumber} (${t.customerName || 'Pelanggan Umum'})${t.status === 'DIRETUR_SEBAGIAN' ? ' [Retur Sebagian]' : ''}`,
+            amount: netTotalInvoice,
+            account,
+            accountLabel,
+            referenceType: 'TRANSACTION',
+            referenceId: t.id,
+            sourceType: 'POS_AUTO_SALE',
+            isAutoJournal: true,
+            invoiceNumber: t.invoiceNumber,
+            customerName: t.customerName,
+            notes: t.items.map(i => `${i.productName} (${i.quantity}x)`).join(', '),
+            actorName: t.cashierName || 'Kasir',
+          });
+        }
+
+        // Auto-Jurnal: Retur Sebagian (Refund Outflow)
+        if (t.status === 'DIRETUR_SEBAGIAN' && t.returnRecords && t.returnRecords.length > 0) {
+          t.returnRecords.forEach(ret => {
+            let retAccount: CashAccountType = 'KAS_TUNAI';
+            let retAccountLabel = 'Kas Tunai (Laci)';
+            if (ret.refundMethod === 'TRANSFER') {
+              retAccount = 'BANK_TRANSFER';
+              retAccountLabel = 'Rekening Bank';
+            } else if (ret.refundMethod === 'SALDO_DEPOSIT') {
+              retAccount = 'SALDO_DEPOSIT';
+              retAccountLabel = 'Saldo Deposit';
+            }
+
+            rawItems.push({
+              id: `ret-${ret.id}`,
+              timestamp: ret.timestamp,
+              dateStr: ret.timestamp.slice(0, 10),
+              type: 'KAS_KELUAR',
+              category: 'Pengembalian Dana / Retur Penjualan',
+              title: `Auto-Jurnal: Retur Item Nota ${t.invoiceNumber} (${t.customerName || 'Pelanggan'})`,
+              amount: ret.totalRefundAmount,
+              account: retAccount,
+              accountLabel: retAccountLabel,
+              referenceType: 'TRANSACTION',
+              referenceId: t.id,
+              sourceType: 'POS_AUTO_REFUND',
+              isAutoJournal: true,
+              invoiceNumber: t.invoiceNumber,
+              customerName: t.customerName,
+              notes: `Alasan Retur: ${ret.reason}. Item: ${ret.items.map(i => `${i.productName} (-${i.quantity})`).join(', ')}`,
+              actorName: t.cashierName || 'Kasir',
+            });
+          });
+        }
       });
-    });
+    }
 
-    // 2. Customer Debt Payments (Pelunasan Kasbon)
+    // 2. Customer Debt Payments (Auto-Jurnal Pelunasan Kasbon)
     transactions.forEach(t => {
       if (t.paymentHistory && t.paymentHistory.length > 0) {
         t.paymentHistory.forEach(p => {
@@ -1625,12 +1771,16 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             dateStr: p.date.slice(0, 10),
             type: 'KAS_MASUK',
             category: 'Pelunasan Kasbon',
-            title: `Pelunasan Kasbon Nota ${t.invoiceNumber} - ${t.customerName || 'Pelanggan'}`,
+            title: `Auto-Jurnal: Pelunasan Kasbon Nota ${t.invoiceNumber} - ${t.customerName || 'Pelanggan'}`,
             amount: p.amount,
             account: 'KAS_TUNAI',
             accountLabel: 'Kas Tunai (Laci)',
             referenceType: 'DEBT_SETTLEMENT',
             referenceId: t.id,
+            sourceType: 'POS_DEBT_SETTLEMENT',
+            isAutoJournal: true,
+            invoiceNumber: t.invoiceNumber,
+            customerName: t.customerName,
             notes: p.notes || `Pelunasan piutang/kasbon untuk ${t.customerName || 'Pelanggan'}`,
             actorName: 'Kasir',
           });
@@ -1638,7 +1788,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
     });
 
-    // 3. Customer Deposit Top-Ups
+    // 3. Customer Deposit Top-Ups (Auto-Jurnal Top-up Deposit)
     customers.forEach(c => {
       if (c.depositHistory && c.depositHistory.length > 0) {
         c.depositHistory.forEach(dep => {
@@ -1658,13 +1808,16 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               timestamp: dep.timestamp,
               dateStr: dep.timestamp.slice(0, 10),
               type: 'KAS_MASUK',
-              category: 'Deposit Masuk',
-              title: `Top-up Saldo Deposit - ${c.name}`,
+              category: 'Top-Up Saldo Deposit',
+              title: `Auto-Jurnal: Top-Up Saldo Deposit - ${c.name}`,
               amount: dep.amount,
               account,
               accountLabel,
               referenceType: 'DEPOSIT_TOPUP',
               referenceId: dep.id,
+              sourceType: 'CUSTOMER_DEPOSIT_TOPUP',
+              isAutoJournal: true,
+              customerName: c.name,
               notes: dep.notes || `Top up saldo deposit pelanggan ${c.name}`,
               actorName: 'Kasir',
             });
@@ -1673,7 +1826,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
     });
 
-    // 4. Expenses (Beban Pengeluaran)
+    // 4. Expenses (Beban Pengeluaran Operasional)
     expenses.forEach(e => {
       let account: CashAccountType = 'KAS_TUNAI';
       let accountLabel = 'Kas Tunai (Laci)';
@@ -1694,6 +1847,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         accountLabel,
         referenceType: 'EXPENSE',
         referenceId: e.id,
+        sourceType: 'OPERATIONAL_EXPENSE',
         notes: e.notes,
         actorName: e.cashierName || 'Kasir',
       });
@@ -1703,28 +1857,32 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     manualJournals.forEach(j => {
       let account: CashAccountType = 'KAS_TUNAI';
       let accountLabel = 'Kas Tunai (Laci)';
-      if (j.sourceAccount === 'QRIS' || j.targetAccount === 'QRIS') {
+      if (j.account === 'QRIS') {
         account = 'QRIS';
         accountLabel = 'QRIS';
-      } else if (j.sourceAccount === 'BANK_TRANSFER' || j.targetAccount === 'BANK_TRANSFER') {
+      } else if (j.account === 'BANK_TRANSFER') {
         account = 'BANK_TRANSFER';
         accountLabel = 'Rekening Bank';
+      } else if (j.account === 'SALDO_DEPOSIT') {
+        account = 'SALDO_DEPOSIT';
+        accountLabel = 'Saldo Deposit';
       }
 
       rawItems.push({
         id: `jnl-${j.id}`,
         timestamp: j.timestamp,
-        dateStr: j.date,
+        dateStr: j.timestamp.slice(0, 10),
         type: j.type,
         category: j.category,
-        title: j.description,
+        title: j.title,
         amount: j.amount,
         account,
         accountLabel,
         referenceType: 'MANUAL',
         referenceId: j.id,
+        sourceType: 'MANUAL_JOURNAL',
         notes: j.notes,
-        actorName: j.createdBy || 'Owner',
+        actorName: j.actorName || 'Owner',
       });
     });
 
@@ -1761,7 +1919,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     // Return in reverse chronological order (newest on top) for table views
     return filtered.reverse();
-  }, [transactions, customers, expenses, manualJournals]);
+  }, [transactions, products, customers, expenses, manualJournals, storeSettings.autoJournalEnabled, storeSettings.autoJournalMode]);
 
   // Calculate Cash Flow Statement (SAK EMKM)
   const calculateCashFlow = useCallback((

@@ -175,6 +175,8 @@ export interface Customer {
   createdAt: string;
 }
 
+export type AutoJournalMode = 'DETAILED_PER_CATEGORY' | 'SIMPLE_PER_INVOICE';
+
 export interface StoreSettings {
   storeName: string;
   tagline: string;
@@ -189,6 +191,11 @@ export interface StoreSettings {
   bankInfo?: string;
   logoUrl?: string;
   autoSyncCloud: boolean;
+  // Auto-Jurnal POS Settings
+  autoJournalEnabled?: boolean;
+  autoJournalMode?: AutoJournalMode;
+  autoJournalRecordHPP?: boolean;
+  autoJournalRecordDiscount?: boolean;
 }
 
 export interface ProfitLossSummary {
@@ -214,10 +221,20 @@ export type JournalEntryType = 'KAS_MASUK' | 'KAS_KELUAR';
 
 export type JournalCategory =
   | 'Penjualan Kasir'
+  | 'Penjualan Makanan'
+  | 'Penjualan Minuman'
+  | 'Penjualan Snack & Gorengan'
+  | 'Penjualan Sembako & Kebutuhan'
+  | 'Penjualan Rokok & Pulsa'
+  | 'Penjualan Lainnya'
+  | 'Pendapatan Pajak Penjualan'
   | 'Pelunasan Kasbon'
   | 'Top-Up Saldo Deposit'
   | 'Modal Awal / Tambahan Modal'
   | 'Pendapatan Lain-lain'
+  | 'Beban Pokok Penjualan (HPP)'
+  | 'Potongan Diskon Promosi Penjualan'
+  | 'Pengembalian Dana / Retur Penjualan'
   | 'Prive / Penarikan Pemilik'
   | 'Setor Kas ke Bank'
   | 'Belanja Bahan Baku'
@@ -231,6 +248,16 @@ export type JournalCategory =
   | 'Pengeluaran Lain-lain';
 
 export type CashAccountType = 'KAS_TUNAI' | 'BANK_TRANSFER' | 'QRIS' | 'SALDO_DEPOSIT';
+
+export type JournalSourceType =
+  | 'POS_AUTO_SALE'           // Penjualan otomatis dari POS
+  | 'POS_AUTO_HPP'            // Beban Pokok Penjualan (HPP) otomatis
+  | 'POS_AUTO_DISCOUNT'       // Beban Diskon Promosi Penjualan
+  | 'POS_AUTO_REFUND'         // Pengembalian Dana / Retur Penjualan
+  | 'POS_DEBT_SETTLEMENT'     // Pelunasan Kasbon
+  | 'CUSTOMER_DEPOSIT_TOPUP'  // Topup Saldo Deposit
+  | 'OPERATIONAL_EXPENSE'     // Beban Operasional Kas
+  | 'MANUAL_JOURNAL';         // Jurnal Umum Manual
 
 export interface ManualJournalEntry {
   id: string;
@@ -257,6 +284,11 @@ export interface JournalEntryItem {
   accountLabel: string;
   referenceType: 'TRANSACTION' | 'EXPENSE' | 'DEBT_SETTLEMENT' | 'DEPOSIT_TOPUP' | 'MANUAL';
   referenceId?: string;
+  sourceType?: JournalSourceType;
+  isAutoJournal?: boolean;
+  invoiceNumber?: string;
+  productCategory?: string;
+  customerName?: string;
   notes?: string;
   actorName?: string;
   runningBalance?: number;
@@ -352,5 +384,31 @@ export interface AppUser {
   isActive: boolean;
   createdAt: string;
   lastLogin?: string;
+}
+
+// === SHOPPING & RESTOCK NOTES TYPES ===
+
+export type ShoppingItemPriority = 'URGENT' | 'HIGH' | 'NORMAL' | 'LOW';
+export type ShoppingItemStatus = 'PENDING' | 'IN_CART' | 'PURCHASED';
+
+export interface ShoppingItem {
+  id: string;
+  name: string; // Nama Bahan / Barang (e.g. "Beras Pulen 25kg", "Cup 16oz + Tutup", "Telur Ayam 2 Karpet")
+  category: string; // Kategori: "Bahan Baku Utama", "Bumbu & Sayuran", "Minuman & Sirup", "Kemasan & Plastik", "Gas & Perlengkapan", "Lain-lain"
+  quantity: number; // Jumlah yang mau dibeli
+  unit: string; // Satuan: 'kg', 'pcs', 'karpet', 'karton', 'dus', 'botol', 'pack', 'ikat', 'liter', 'tabung'
+  estimatedPrice: number; // Estimasi harga belanja
+  actualPrice?: number; // Realisasi harga setelah dibeli
+  priority: ShoppingItemPriority; // 'URGENT' | 'HIGH' | 'NORMAL' | 'LOW'
+  supplierLocation?: string; // Toko / Supplier / Pasar (e.g. "Pasar Induk", "Toko Plastik Jaya", "Agen Sembako Makmur")
+  status: ShoppingItemStatus; // 'PENDING' | 'IN_CART' | 'PURCHASED'
+  notes?: string; // Catatan merek, spesifikasi khusus, dll.
+  relatedProductId?: string; // Jika terhubung dengan menu produk tertentu
+  createdAt: string;
+  createdBy?: string;
+  purchasedAt?: string;
+  purchasedBy?: string;
+  isRecordedToExpense?: boolean; // Apakah sudah dicatat ke Beban Pengeluaran / Buku Kas
+  expenseId?: string; // ID pengeluaran terkait jika sudah dicatat
 }
 

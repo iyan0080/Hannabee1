@@ -225,6 +225,94 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
 
+        {/* 3. Konfigurasi Auto-Jurnal POS */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-xs">⚡</span>
+              <span>Integrasi Auto-Jurnal POS & Buku Kas</span>
+            </h3>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+              Otomatisasi Real-Time
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-500">
+            Fitur Auto-Jurnal secara otomatis mencatat setiap transaksi penjualan kasir yang selesai ke dalam Buku Kas dengan klasifikasi kategori pemasukan dan saluran kas yang akurat.
+          </p>
+
+          <div className="space-y-3.5 pt-1 text-xs">
+            {/* Toggle Active */}
+            <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+              <div>
+                <p className="font-bold text-slate-800">Aktifkan Auto-Jurnal Transaksi Kasir</p>
+                <p className="text-slate-500 text-[11px]">Setiap nota selesai di POS otomatis tercatat di Buku Kas & Jurnal Mutasi</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.autoJournalEnabled !== false}
+                  onChange={e => setFormData({ ...formData, autoJournalEnabled: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+              </label>
+            </div>
+
+            {/* Classification Mode */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+              <label className="block font-bold text-slate-800">Mode Klasifikasi Kategori Penjualan:</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <label
+                  className={`p-3 rounded-xl border cursor-pointer flex items-start gap-2.5 transition-all ${
+                    (formData.autoJournalMode || 'DETAILED_PER_CATEGORY') === 'DETAILED_PER_CATEGORY'
+                      ? 'bg-amber-50/80 border-amber-400 text-amber-950 font-medium'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="autoJournalMode"
+                    value="DETAILED_PER_CATEGORY"
+                    checked={(formData.autoJournalMode || 'DETAILED_PER_CATEGORY') === 'DETAILED_PER_CATEGORY'}
+                    onChange={() => setFormData({ ...formData, autoJournalMode: 'DETAILED_PER_CATEGORY' })}
+                    className="mt-0.5 text-amber-600 focus:ring-amber-500"
+                  />
+                  <div>
+                    <span className="font-bold block text-xs">Rinci per Kategori Produk</span>
+                    <span className="text-[11px] text-slate-500 block mt-0.5">
+                      Memisahkan omzet otomatis ke Penjualan Makanan, Penjualan Minuman, Sembako, dll.
+                    </span>
+                  </div>
+                </label>
+
+                <label
+                  className={`p-3 rounded-xl border cursor-pointer flex items-start gap-2.5 transition-all ${
+                    formData.autoJournalMode === 'SIMPLE_PER_INVOICE'
+                      ? 'bg-amber-50/80 border-amber-400 text-amber-950 font-medium'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="autoJournalMode"
+                    value="SIMPLE_PER_INVOICE"
+                    checked={formData.autoJournalMode === 'SIMPLE_PER_INVOICE'}
+                    onChange={() => setFormData({ ...formData, autoJournalMode: 'SIMPLE_PER_INVOICE' })}
+                    className="mt-0.5 text-amber-600 focus:ring-amber-500"
+                  />
+                  <div>
+                    <span className="font-bold block text-xs">Ringkas per Nota Kasir</span>
+                    <span className="text-[11px] text-slate-500 block mt-0.5">
+                      Mencatat 1 baris jurnal per nota dengan kategori tunggal "Penjualan Kasir (POS)".
+                    </span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Submit Save Settings */}
         <div className="flex items-center justify-between">
           {savedSuccess ? (

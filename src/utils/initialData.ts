@@ -61,6 +61,10 @@ export const INITIAL_STORE_SETTINGS: StoreSettings = {
   qrisInfo: 'NMID: ID1020304050607 / HannaBee',
   bankInfo: 'BCA: 8735019284 a.n. HannaBee (082178867116)',
   autoSyncCloud: true,
+  autoJournalEnabled: true,
+  autoJournalMode: 'DETAILED_PER_CATEGORY',
+  autoJournalRecordHPP: true,
+  autoJournalRecordDiscount: true,
 };
 
 // Database Bersih (Semua data demo telah dihapus)

@@ -94,6 +94,21 @@
         "cashierName": { "type": "string" }
       },
       "required": ["storeName"]
+    },
+    "ShoppingItem": {
+      "title": "ShoppingItem",
+      "description": "Catatan daftar belanja barang dan bahan baku warung",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unit": { "type": "string" },
+        "estimatedPrice": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "name", "quantity", "unit"]
     }
   },
   "firestore": {
@@ -104,6 +119,7 @@
     "manual_journals": { "entity": "ManualJournalEntry", "description": "Koleksi mutasi kas" },
     "cash_closings": { "entity": "CashClosingRecord", "description": "Koleksi tutup kas" },
     "store_settings": { "entity": "StoreSettings", "description": "Pengaturan toko" },
-    "users": { "entity": "Customer", "description": "Koleksi pengguna" }
+    "users": { "entity": "Customer", "description": "Koleksi pengguna" },
+    "shopping_items": { "entity": "ShoppingItem", "description": "Koleksi catatan belanja bahan baku" }
   }
 }
