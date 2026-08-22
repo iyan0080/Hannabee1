@@ -18,10 +18,12 @@ import {
   LogOut,
   Mail,
   BookOpen,
+  ClipboardList,
 } from 'lucide-react';
 
 export type NavTab = 
   | 'pos'
+  | 'shopping'
   | 'bookkeeping'
   | 'reports'
   | 'menu'
@@ -51,15 +53,18 @@ export const Navbar: React.FC<NavbarProps> = ({
     customers,
     currentUser,
     users,
+    shoppingItems,
     logout,
   } = useWarung();
 
   const unpaidCount = transactions.filter(t => t.status === 'BELUM_LUNAS').length;
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalDepositAll = customers.reduce((sum, c) => sum + (c.depositBalance || 0), 0);
+  const pendingShoppingCount = shoppingItems.filter(s => s.status !== 'PURCHASED').length;
 
   const navItems: { id: NavTab; label: string; icon: React.ReactNode; badge?: number | string; badgeColor?: string }[] = [
     { id: 'pos', label: 'Dashboard & Kasir', icon: <LayoutDashboard size={18} />, badge: cartItemCount > 0 ? `${cartItemCount} item` : undefined, badgeColor: 'bg-blue-500' },
+    { id: 'shopping', label: 'Catatan Belanja Bahan', icon: <ClipboardList size={18} />, badge: pendingShoppingCount > 0 ? `${pendingShoppingCount}` : undefined, badgeColor: 'bg-amber-500' },
     { id: 'bookkeeping', label: 'Buku Kas & Pembukuan', icon: <BookOpen size={18} /> },
     { id: 'reports', label: 'Pusat Laporan', icon: <BarChart3 size={18} />, badge: unpaidCount > 0 ? `${unpaidCount} Bon` : undefined, badgeColor: 'bg-amber-500' },
     { id: 'menu', label: 'Menu & Varian', icon: <UtensilsCrossed size={18} /> },

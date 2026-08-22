@@ -22,7 +22,23 @@ import {
   ReturnedItemRecord,
   ReturnRecord,
   TransactionStatus,
+  ShoppingItem,
+  ShoppingItemStatus,
+  BackupDataPayload,
+  LocalAutoBackupRecord,
+  AutoBackupConfig,
 } from '../types';
+import {
+  createBackupPayload,
+  downloadBackupJSON,
+  getLocalBackupSnapshots,
+  saveLocalBackupSnapshot,
+  deleteLocalBackupSnapshot,
+  clearAllLocalSnapshots,
+  getAutoBackupConfig,
+  saveAutoBackupConfig,
+  getWIBDateTime,
+} from '../utils/backupService';
 import {
   INITIAL_PRODUCTS,
   INITIAL_TRANSACTIONS,
@@ -32,6 +48,7 @@ import {
   INITIAL_USERS,
   INITIAL_MANUAL_JOURNALS,
   INITIAL_CASH_CLOSINGS,
+  INITIAL_SHOPPING_ITEMS,
 } from '../utils/initialData';
 import {
   subscribeToProducts,
@@ -42,6 +59,7 @@ import {
   subscribeToCashClosings,
   subscribeToStoreSettings,
   subscribeToUsers,
+  subscribeToShoppingItems,
   saveProductToFirestore,
   deleteProductFromFirestore,
   saveTransactionToFirestore,
@@ -56,6 +74,8 @@ import {
   saveStoreSettingsToFirestore,
   saveUserToFirestore,
   deleteUserFromFirestore,
+  saveShoppingItemToFirestore,
+  deleteShoppingItemFromFirestore,
   clearAllFirestoreDocuments,
   pushFullDatabaseToFirestore,
 } from '../services/firestoreSync';
@@ -81,6 +101,14 @@ interface WarungContextType {
   customers: Customer[];
   storeSettings: StoreSettings;
   syncState: CloudSyncState;
+
+  // Shopping / Restock Notes
+  shoppingItems: ShoppingItem[];
+  addShoppingItem: (item: Omit<ShoppingItem, 'id' | 'createdAt'>) => ShoppingItem;
+  updateShoppingItem: (id: string, updatedData: Partial<ShoppingItem>) => void;
+  deleteShoppingItem: (id: string) => void;
+  toggleShoppingItemStatus: (id: string, status?: ShoppingItemStatus) => void;
+  recordShoppingItemAsExpense: (itemId: string, actualExpenseAmount?: number, paymentMethod?: 'TUNAI' | 'TRANSFER' | 'LAINNYA') => void;
 
   // Bookkeeping / Pembukuan
   manualJournals: ManualJournalEntry[];
@@ -155,6 +183,18 @@ interface WarungContextType {
 
   // Financial Calculations
   calculateProfitLoss: (startDate: Date, endDate: Date, periodLabel: string) => ProfitLossSummary;
+
+  // Backup, Restore & Auto-Backup
+  localBackupHistory: LocalAutoBackupRecord[];
+  autoBackupConfig: AutoBackupConfig;
+  lastAutoBackupNotice: string | null;
+  dismissAutoBackupNotice: () => void;
+  triggerManualBackup: (backupType?: 'FULL' | 'CUSTOMERS' | 'PRODUCTS' | 'TRANSACTIONS' | 'CASH_BOOK') => BackupDataPayload;
+  saveCurrentAsLocalSnapshot: () => LocalAutoBackupRecord;
+  restoreDatabaseFromBackup: (payload: BackupDataPayload, mode?: 'REPLACE' | 'MERGE') => Promise<{ success: boolean; message: string; stats?: any }>;
+  deleteLocalBackup: (id: string) => void;
+  clearAllLocalBackups: () => void;
+  updateAutoBackupConfig: (config: Partial<AutoBackupConfig>) => void;
 }
 
 const WarungContext = createContext<WarungContextType | undefined>(undefined);
@@ -169,6 +209,7 @@ const STORAGE_KEYS = {
   SETTINGS: 'warung_settings_v3',
   MANUAL_JOURNALS: 'warung_manual_journals_v2',
   CASH_CLOSINGS: 'warung_cash_closings_v2',
+  SHOPPING_ITEMS: 'warung_shopping_items_v2',
 };
 
 // Clean legacy demo keys on load
@@ -231,6 +272,11 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return saved ? JSON.parse(saved) : INITIAL_CASH_CLOSINGS;
   });
 
+  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.SHOPPING_ITEMS);
+    return saved ? JSON.parse(saved) : INITIAL_SHOPPING_ITEMS;
+  });
+
   // POS Cart Active State
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomerState] = useState<Customer | null>(null);
@@ -277,6 +323,79 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     status: navigator.onLine ? 'synced' : 'offline',
   });
 
+  // Backup & Auto-Backup State
+  const [localBackupHistory, setLocalBackupHistory] = useState<LocalAutoBackupRecord[]>(() => {
+    return getLocalBackupSnapshots();
+  });
+
+  const [autoBackupConfigState, setAutoBackupConfigState] = useState<AutoBackupConfig>(() => {
+    return getAutoBackupConfig();
+  });
+
+  const [lastAutoBackupNotice, setLastAutoBackupNotice] = useState<string | null>(null);
+
+  const dismissAutoBackupNotice = useCallback(() => {
+    setLastAutoBackupNotice(null);
+  }, []);
+
+  // Background Auto-Backup Scheduler for 00:00 WIB (Local Storage HP)
+  useEffect(() => {
+    const checkSchedule = () => {
+      const config = getAutoBackupConfig();
+      if (!config.enabled) return;
+
+      const wib = getWIBDateTime();
+      const todayStrWIB = wib.dateStrWIB; // e.g. "2026-08-22"
+
+      // If already backed up today in WIB, skip
+      if (config.lastBackupDateWIB === todayStrWIB) {
+        return;
+      }
+
+      // Check if it's midnight hour in WIB (00:00 - 00:59) or if today's snapshot hasn't been taken yet
+      const isTargetHour = wib.hourWIB === config.hourWIB;
+      const isOverdue = !config.lastBackupDateWIB || config.lastBackupDateWIB < todayStrWIB;
+
+      if (isTargetHour || isOverdue) {
+        const payload = createBackupPayload({
+          customers,
+          products,
+          transactions,
+          expenses,
+          manualJournals,
+          cashClosings,
+          shoppingItems,
+          storeSettings,
+          users,
+          backupType: 'FULL',
+          backupTarget: `${config.targetRole} (Penyimpanan Lokal HP)`,
+        });
+
+        const newSnapshot = saveLocalBackupSnapshot(payload, 'AUTO_DAILY_00_00', `HP ${config.targetRole}`);
+        setLocalBackupHistory(getLocalBackupSnapshots());
+
+        const updatedConfig = saveAutoBackupConfig({
+          lastBackupDateWIB: todayStrWIB,
+          lastBackupTimestamp: new Date().toISOString(),
+        });
+        setAutoBackupConfigState(updatedConfig);
+
+        if (config.autoDownloadJSON) {
+          downloadBackupJSON(payload, `AUTO_BACKUP_00_00_WIB_${todayStrWIB}.json`);
+        }
+
+        setLastAutoBackupNotice(`💾 Cadangan otomatis harian (00:00 WIB) telah berhasil disimpan ke penyimpanan lokal HP (${newSnapshot.fileSizeFormatted}).`);
+      }
+    };
+
+    // Check once on boot
+    checkSchedule();
+
+    // Check interval every 30 seconds
+    const timer = setInterval(checkSchedule, 30000);
+    return () => clearInterval(timer);
+  }, [customers, products, transactions, expenses, manualJournals, cashClosings, shoppingItems, storeSettings, users]);
+
   // Local storage synchronization (fast local caching)
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
@@ -317,6 +436,10 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.CASH_CLOSINGS, JSON.stringify(cashClosings));
   }, [cashClosings]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.SHOPPING_ITEMS, JSON.stringify(shoppingItems));
+  }, [shoppingItems]);
 
   // Online / Offline monitor
   useEffect(() => {
@@ -389,6 +512,12 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       setSyncState(prev => ({ ...prev, status: 'synced', lastSyncedAt: new Date().toISOString() }));
     });
 
+    // 9. Subscribe to Shopping Items
+    const unsubShopping = subscribeToShoppingItems(cloudShopping => {
+      setShoppingItems(cloudShopping);
+      setSyncState(prev => ({ ...prev, status: 'synced', lastSyncedAt: new Date().toISOString() }));
+    });
+
     isLoadedFromCloud.current = true;
 
     return () => {
@@ -400,6 +529,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       unsubClosings();
       unsubSettings();
       unsubUsers();
+      unsubShopping();
     };
   }, []);
 
@@ -421,6 +551,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         cashClosings,
         storeSettings,
         users,
+        shoppingItems,
       });
 
       setSyncState({
@@ -1532,6 +1663,101 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
   }, []);
 
+  // Shopping Items CRUD
+  const addShoppingItem = useCallback((itemData: Omit<ShoppingItem, 'id' | 'createdAt'>): ShoppingItem => {
+    const newItem: ShoppingItem = {
+      ...itemData,
+      id: 'shop-' + Date.now(),
+      createdAt: new Date().toISOString(),
+      status: itemData.status || 'PENDING',
+      createdBy: currentUser?.name || storeSettings.cashierName,
+    };
+    setShoppingItems(prev => [newItem, ...prev]);
+    saveShoppingItemToFirestore(newItem);
+    return newItem;
+  }, [currentUser, storeSettings]);
+
+  const updateShoppingItem = useCallback((id: string, updatedData: Partial<ShoppingItem>) => {
+    setShoppingItems(prev =>
+      prev.map(item => {
+        if (item.id === id) {
+          const updated = { ...item, ...updatedData };
+          saveShoppingItemToFirestore(updated);
+          return updated;
+        }
+        return item;
+      })
+    );
+  }, []);
+
+  const deleteShoppingItem = useCallback((id: string) => {
+    setShoppingItems(prev => prev.filter(item => item.id !== id));
+    deleteShoppingItemFromFirestore(id);
+  }, []);
+
+  const toggleShoppingItemStatus = useCallback((id: string, newStatus?: ShoppingItemStatus) => {
+    setShoppingItems(prev =>
+      prev.map(item => {
+        if (item.id === id) {
+          const nextStatus = newStatus || (item.status === 'PURCHASED' ? 'PENDING' : 'PURCHASED');
+          const updated: ShoppingItem = {
+            ...item,
+            status: nextStatus,
+            purchasedAt: nextStatus === 'PURCHASED' ? new Date().toISOString() : undefined,
+            purchasedBy: nextStatus === 'PURCHASED' ? (currentUser?.name || storeSettings.cashierName) : undefined,
+          };
+          saveShoppingItemToFirestore(updated);
+          return updated;
+        }
+        return item;
+      })
+    );
+  }, [currentUser, storeSettings]);
+
+  const recordShoppingItemAsExpense = useCallback((
+    itemId: string,
+    actualExpenseAmount?: number,
+    paymentMethod: 'TUNAI' | 'TRANSFER' | 'LAINNYA' = 'TUNAI'
+  ) => {
+    const targetItem = shoppingItems.find(s => s.id === itemId);
+    if (!targetItem) return;
+
+    const amount = actualExpenseAmount || targetItem.actualPrice || targetItem.estimatedPrice || 0;
+    const expenseDesc = `Belanja Bahan: ${targetItem.name} (${targetItem.quantity} ${targetItem.unit || 'item'})`;
+    
+    // Create new Expense
+    const newExpense: Expense = {
+      id: 'exp-' + Date.now(),
+      title: expenseDesc,
+      category: 'Belanja Bahan Baku',
+      amount,
+      paymentMethod: paymentMethod === 'TRANSFER' ? 'TRANSFER' : 'TUNAI',
+      timestamp: new Date().toISOString(),
+      recipient: targetItem.supplierLocation || undefined,
+      cashierName: currentUser?.name || storeSettings.cashierName,
+      notes: targetItem.supplierLocation ? `Dibeli di ${targetItem.supplierLocation}. ${targetItem.notes || ''}` : targetItem.notes,
+    };
+
+    setExpenses(prev => [newExpense, ...prev]);
+    saveExpenseToFirestore(newExpense);
+
+    // Update the shopping item as recorded to expense
+    const updatedShopping: ShoppingItem = {
+      ...targetItem,
+      status: 'PURCHASED',
+      actualPrice: amount,
+      purchasedAt: new Date().toISOString(),
+      purchasedBy: currentUser?.name || storeSettings.cashierName,
+      isRecordedToExpense: true,
+      expenseId: newExpense.id,
+    };
+
+    setShoppingItems(prev =>
+      prev.map(s => s.id === itemId ? updatedShopping : s)
+    );
+    saveShoppingItemToFirestore(updatedShopping);
+  }, [shoppingItems, currentUser, storeSettings]);
+
   // Bookkeeping CRUD
   const addManualJournalEntry = useCallback((entryData: Omit<ManualJournalEntry, 'id'>): ManualJournalEntry => {
     const newEntry: ManualJournalEntry = {
@@ -2169,6 +2395,226 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     [transactions, expenses]
   );
 
+  // Backup & Restore Operations
+  const triggerManualBackup = useCallback(
+    (backupType: 'FULL' | 'CUSTOMERS' | 'PRODUCTS' | 'TRANSACTIONS' | 'CASH_BOOK' = 'FULL'): BackupDataPayload => {
+      let payloadCustomers = customers;
+      let payloadProducts = products;
+      let payloadTransactions = transactions;
+      let payloadExpenses = expenses;
+      let payloadManualJournals = manualJournals;
+      let payloadCashClosings = cashClosings;
+      let payloadShoppingItems = shoppingItems;
+
+      if (backupType === 'CUSTOMERS') {
+        payloadProducts = [];
+        payloadTransactions = [];
+        payloadExpenses = [];
+        payloadManualJournals = [];
+        payloadCashClosings = [];
+        payloadShoppingItems = [];
+      } else if (backupType === 'PRODUCTS') {
+        payloadCustomers = [];
+        payloadTransactions = [];
+        payloadExpenses = [];
+        payloadManualJournals = [];
+        payloadCashClosings = [];
+      } else if (backupType === 'TRANSACTIONS') {
+        payloadExpenses = [];
+        payloadManualJournals = [];
+        payloadCashClosings = [];
+        payloadShoppingItems = [];
+      } else if (backupType === 'CASH_BOOK') {
+        payloadCustomers = [];
+        payloadProducts = [];
+        payloadShoppingItems = [];
+      }
+
+      const payload = createBackupPayload({
+        customers: payloadCustomers,
+        products: payloadProducts,
+        transactions: payloadTransactions,
+        expenses: payloadExpenses,
+        manualJournals: payloadManualJournals,
+        cashClosings: payloadCashClosings,
+        shoppingItems: payloadShoppingItems,
+        storeSettings,
+        users,
+        backupType,
+        backupTarget: 'Unduhan Manual JSON',
+      });
+
+      downloadBackupJSON(payload);
+      // Also save to local snapshot
+      saveLocalBackupSnapshot(payload, 'MANUAL', 'HP Admin 1 (Manual)');
+      setLocalBackupHistory(getLocalBackupSnapshots());
+
+      return payload;
+    },
+    [customers, products, transactions, expenses, manualJournals, cashClosings, shoppingItems, storeSettings, users]
+  );
+
+  const saveCurrentAsLocalSnapshot = useCallback((): LocalAutoBackupRecord => {
+    const payload = createBackupPayload({
+      customers,
+      products,
+      transactions,
+      expenses,
+      manualJournals,
+      cashClosings,
+      shoppingItems,
+      storeSettings,
+      users,
+      backupType: 'FULL',
+      backupTarget: 'Snapshot Manual Lokal HP',
+    });
+    const snapshot = saveLocalBackupSnapshot(payload, 'MANUAL', 'HP Admin 1');
+    setLocalBackupHistory(getLocalBackupSnapshots());
+    return snapshot;
+  }, [customers, products, transactions, expenses, manualJournals, cashClosings, shoppingItems, storeSettings, users]);
+
+  const deleteLocalBackup = useCallback((id: string) => {
+    const updated = deleteLocalBackupSnapshot(id);
+    setLocalBackupHistory(updated);
+  }, []);
+
+  const clearAllLocalBackups = useCallback(() => {
+    clearAllLocalSnapshots();
+    setLocalBackupHistory([]);
+  }, []);
+
+  const updateAutoBackupConfig = useCallback((config: Partial<AutoBackupConfig>) => {
+    const updated = saveAutoBackupConfig(config);
+    setAutoBackupConfigState(updated);
+  }, []);
+
+  const restoreDatabaseFromBackup = useCallback(
+    async (payload: BackupDataPayload, mode: 'REPLACE' | 'MERGE' = 'REPLACE'): Promise<{ success: boolean; message: string; stats?: any }> => {
+      try {
+        if (!payload || !payload.data) {
+          return { success: false, message: 'Format data cadangan tidak valid.' };
+        }
+
+        const { data } = payload;
+        let newProducts = products;
+        let newTransactions = transactions;
+        let newExpenses = expenses;
+        let newCustomers = customers;
+        let newJournals = manualJournals;
+        let newClosings = cashClosings;
+        let newShopping = shoppingItems;
+        let newStoreSettings = storeSettings;
+        let newUsers = users;
+
+        if (mode === 'REPLACE') {
+          if (Array.isArray(data.products)) newProducts = data.products;
+          if (Array.isArray(data.transactions)) newTransactions = data.transactions;
+          if (Array.isArray(data.expenses)) newExpenses = data.expenses;
+          if (Array.isArray(data.customers)) newCustomers = data.customers;
+          if (Array.isArray(data.manualJournals)) newJournals = data.manualJournals;
+          if (Array.isArray(data.cashClosings)) newClosings = data.cashClosings;
+          if (Array.isArray(data.shoppingItems)) newShopping = data.shoppingItems;
+          if (data.storeSettings) newStoreSettings = data.storeSettings;
+          if (Array.isArray(data.users) && data.users.length > 0) newUsers = data.users;
+        } else {
+          // MERGE MODE
+          if (Array.isArray(data.products)) {
+            const map = new Map<string, Product>(products.map(p => [p.id, p]));
+            data.products.forEach(p => map.set(p.id, p));
+            newProducts = Array.from(map.values());
+          }
+          if (Array.isArray(data.transactions)) {
+            const map = new Map<string, Transaction>(transactions.map(t => [t.id, t]));
+            data.transactions.forEach(t => map.set(t.id, t));
+            newTransactions = Array.from(map.values()).sort(
+              (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            );
+          }
+          if (Array.isArray(data.expenses)) {
+            const map = new Map<string, Expense>(expenses.map(e => [e.id, e]));
+            data.expenses.forEach(e => map.set(e.id, e));
+            newExpenses = Array.from(map.values()).sort(
+              (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            );
+          }
+          if (Array.isArray(data.customers)) {
+            const map = new Map<string, Customer>(customers.map(c => [c.id, c]));
+            data.customers.forEach(c => map.set(c.id, c));
+            newCustomers = Array.from(map.values());
+          }
+          if (Array.isArray(data.manualJournals)) {
+            const map = new Map<string, ManualJournalEntry>(manualJournals.map(j => [j.id, j]));
+            data.manualJournals.forEach(j => map.set(j.id, j));
+            newJournals = Array.from(map.values());
+          }
+          if (Array.isArray(data.cashClosings)) {
+            const map = new Map<string, CashClosingRecord>(cashClosings.map(c => [c.id, c]));
+            data.cashClosings.forEach(c => map.set(c.id, c));
+            newClosings = Array.from(map.values());
+          }
+          if (Array.isArray(data.shoppingItems)) {
+            const map = new Map<string, ShoppingItem>(shoppingItems.map(s => [s.id, s]));
+            data.shoppingItems.forEach(s => map.set(s.id, s));
+            newShopping = Array.from(map.values());
+          }
+          if (data.storeSettings) {
+            newStoreSettings = { ...storeSettings, ...data.storeSettings };
+          }
+          if (Array.isArray(data.users) && data.users.length > 0) {
+            const map = new Map<string, AppUser>(users.map(u => [u.id, u]));
+            data.users.forEach(u => map.set(u.id, u));
+            newUsers = Array.from(map.values());
+          }
+        }
+
+        // Apply state updates
+        setProducts(newProducts);
+        setTransactions(newTransactions);
+        setExpenses(newExpenses);
+        setCustomers(newCustomers);
+        setManualJournals(newJournals);
+        setCashClosings(newClosings);
+        setShoppingItems(newShopping);
+        setStoreSettings(newStoreSettings);
+        setUsers(newUsers);
+
+        // Sync to cloud Firestore
+        await pushFullDatabaseToFirestore({
+          products: newProducts,
+          transactions: newTransactions,
+          expenses: newExpenses,
+          customers: newCustomers,
+          manualJournals: newJournals,
+          cashClosings: newClosings,
+          shoppingItems: newShopping,
+          storeSettings: newStoreSettings,
+          users: newUsers,
+        });
+
+        return {
+          success: true,
+          message: 'Data warung berhasil dipulihkan secara menyeluruh ke sistem dan disinkronkan ke Cloud.',
+          stats: {
+            customers: newCustomers.length,
+            products: newProducts.length,
+            transactions: newTransactions.length,
+            expenses: newExpenses.length,
+            manualJournals: newJournals.length,
+            cashClosings: newClosings.length,
+            shoppingItems: newShopping.length,
+          },
+        };
+      } catch (err: any) {
+        console.error('Error restoring database from backup:', err);
+        return {
+          success: false,
+          message: `Gagal memulihkan cadangan: ${err.message || 'Kesalahan sistem'}`,
+        };
+      }
+    },
+    [products, transactions, expenses, customers, manualJournals, cashClosings, shoppingItems, storeSettings, users]
+  );
+
   return (
     <WarungContext.Provider
       value={{
@@ -2189,6 +2635,12 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         customers,
         storeSettings,
         syncState,
+        shoppingItems,
+        addShoppingItem,
+        updateShoppingItem,
+        deleteShoppingItem,
+        toggleShoppingItemStatus,
+        recordShoppingItemAsExpense,
         manualJournals,
         cashClosings,
         addManualJournalEntry,
@@ -2239,6 +2691,17 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         syncWithCloud,
         clearAllDatabase,
         calculateProfitLoss,
+        // Backup & Restore
+        localBackupHistory,
+        autoBackupConfig: autoBackupConfigState,
+        lastAutoBackupNotice,
+        dismissAutoBackupNotice,
+        triggerManualBackup,
+        saveCurrentAsLocalSnapshot,
+        restoreDatabaseFromBackup,
+        deleteLocalBackup,
+        clearAllLocalBackups,
+        updateAutoBackupConfig,
       }}
     >
       {children}

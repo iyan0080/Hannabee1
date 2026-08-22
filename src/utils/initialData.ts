@@ -7,13 +7,14 @@ import {
   AppUser,
   ManualJournalEntry,
   CashClosingRecord,
+  ShoppingItem,
 } from '../types';
 
 export const INITIAL_USERS: AppUser[] = [
   {
     id: 'usr-1',
     name: 'Hanna',
-    email: 'hanna.hannabee@gmail.com',
+    email: 'hannaalmahyra24@gmail.com',
     password: 'hanna123',
     phone: '082178867116',
     avatarColor: 'bg-amber-600',
@@ -36,9 +37,9 @@ export const INITIAL_USERS: AppUser[] = [
   },
   {
     id: 'usr-3',
-    name: 'NIRMA',
-    email: 'nirma.hannabee@gmail.com',
-    password: 'nirma123',
+    name: 'JUNI',
+    email: 'juni.bid89@gmail.com',
+    password: 'juni123',
     phone: '082178867116',
     avatarColor: 'bg-emerald-600',
     role: 'Admin 2',
@@ -74,3 +75,5 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [];
 export const INITIAL_EXPENSES: Expense[] = [];
 export const INITIAL_MANUAL_JOURNALS: ManualJournalEntry[] = [];
 export const INITIAL_CASH_CLOSINGS: CashClosingRecord[] = [];
+export const INITIAL_SHOPPING_ITEMS: ShoppingItem[] = [];
+

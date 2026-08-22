@@ -412,3 +412,64 @@ export interface ShoppingItem {
   expenseId?: string; // ID pengeluaran terkait jika sudah dicatat
 }
 
+// === BACKUP & RESTORE TYPES ===
+
+export interface BackupDataPayload {
+  appVersion: string;
+  schemaVersion: number;
+  backupDate: string; // ISO string
+  backupDateWIB: string; // e.g. "22 Agustus 2026, 00:00:00 WIB"
+  backupType: 'FULL' | 'CUSTOMERS' | 'PRODUCTS' | 'TRANSACTIONS' | 'CASH_BOOK';
+  backupTarget: string; // e.g. "Admin 1 (Penyimpanan Lokal HP)"
+  store: StoreSettings;
+  counts: {
+    customers: number;
+    products: number;
+    transactions: number;
+    manualJournals: number;
+    cashClosings: number;
+    expenses: number;
+    shoppingItems: number;
+    users: number;
+  };
+  data: {
+    customers: Customer[];
+    products: Product[];
+    transactions: Transaction[];
+    manualJournals: ManualJournalEntry[];
+    cashClosings: CashClosingRecord[];
+    expenses: Expense[];
+    shoppingItems: ShoppingItem[];
+    storeSettings: StoreSettings;
+    users: AppUser[];
+  };
+}
+
+export interface LocalAutoBackupRecord {
+  id: string;
+  timestamp: string; // ISO string
+  dateStrWIB: string; // e.g. "2026-08-22"
+  timeStrWIB: string; // e.g. "00:00:00"
+  type: 'AUTO_DAILY_00_00' | 'MANUAL';
+  targetDevice: string; // e.g. "HP Admin 1"
+  itemCounts: {
+    customers: number;
+    products: number;
+    transactions: number;
+    cashRecords: number; // manualJournals + cashClosings + expenses
+  };
+  fileSizeBytes: number;
+  fileSizeFormatted: string;
+  payload: BackupDataPayload;
+}
+
+export interface AutoBackupConfig {
+  enabled: boolean;
+  targetRole: string; // e.g. "Admin 1"
+  hourWIB: number; // 0 for 00:00 WIB
+  autoDownloadJSON: boolean; // Also trigger file download at 00:00 WIB
+  lastBackupDateWIB: string | null;
+  lastBackupTimestamp: string | null;
+  keepMaxSnapshots: number;
+}
+

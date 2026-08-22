@@ -65,6 +65,8 @@ export function generateReceiptWhatsAppText(transaction: Transaction, store: Sto
     if (item.notes) {
       itemsText += `   _Catatan: ${item.notes}_\n`;
     }
+    // Berikan jarak 1 spasi (baris kosong) antar menu
+    itemsText += `\n`;
   });
 
   const paymentStatus = transaction.status === 'BATAL'

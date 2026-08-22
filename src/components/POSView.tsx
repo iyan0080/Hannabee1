@@ -6,6 +6,7 @@ import { ReceiptModal } from './ReceiptModal';
 import { CashCalculatorModal } from './CashCalculatorModal';
 import { ItemDiscountModal } from './ItemDiscountModal';
 import { calculateSmartCashSuggestions } from '../utils/cashSuggestions';
+import { pickContactFromPhone, isContactPickerSupported } from '../utils/contactPicker';
 import confetti from 'canvas-confetti';
 import {
   Search,
@@ -35,6 +36,8 @@ import {
   ShieldCheck,
   Calculator,
   Coins,
+  Contact,
+  Phone,
 } from 'lucide-react';
 
 const CATEGORIES: ('Semua' | ProductCategory)[] = [
@@ -98,6 +101,24 @@ export const POSView: React.FC = () => {
   const [newCustAddress, setNewCustAddress] = useState('');
   const [newCustDiscountType, setNewCustDiscountType] = useState<DiscountType>('PERCENTAGE');
   const [newCustDiscountValue, setNewCustDiscountValue] = useState<number>(10);
+  const [contactPickerStatus, setContactPickerStatus] = useState<string | null>(null);
+
+  // Handle Pick Contact from Phone
+  const handlePickPhoneContact = async () => {
+    setContactPickerStatus(null);
+    const res = await pickContactFromPhone();
+    if (res.success) {
+      if (res.phone) {
+        setNewCustPhone(res.phone);
+      }
+      if (res.name && !newCustName.trim()) {
+        setNewCustName(res.name);
+      }
+    } else if (res.message) {
+      setContactPickerStatus(res.message);
+      setTimeout(() => setContactPickerStatus(null), 6000);
+    }
+  };
 
   // Completed Receipt Modal State
   const [completedTransaction, setCompletedTransaction] = useState<Transaction | null>(null);
@@ -1336,18 +1357,33 @@ export const POSView: React.FC = () => {
               )}
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Nomor WhatsApp *
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-slate-700">
+                    Nomor WhatsApp (Opsional)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handlePickPhoneContact}
+                    className="text-[11px] text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-200 flex items-center gap-1 font-semibold transition active:scale-95 shadow-2xs"
+                    title="Buka daftar kontak buku telepon HP Anda"
+                  >
+                    <Contact size={13} className="text-blue-600" />
+                    <span>Cari Kontak HP</span>
+                  </button>
+                </div>
                 <input
                   id="new-customer-phone-input"
                   type="tel"
-                  required
-                  placeholder="Contoh: 081298765432"
+                  placeholder="Contoh: 081298765432 (Boleh kosong)"
                   value={newCustPhone}
                   onChange={e => setNewCustPhone(e.target.value)}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-blue-500"
                 />
+                {contactPickerStatus && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-1.5 mt-1">
+                    ℹ️ {contactPickerStatus}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">

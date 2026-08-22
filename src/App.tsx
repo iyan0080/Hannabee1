@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { WarungProvider, useWarung } from './context/WarungContext';
 import { Navbar, NavTab } from './components/Navbar';
 import { POSView } from './components/POSView';
+import { ShoppingListManager } from './components/ShoppingListManager';
 import { ReportsView } from './components/ReportsView';
 import { BookkeepingView } from './components/BookkeepingView';
 import { MenuManagementView } from './components/MenuManagementView';
@@ -103,6 +104,10 @@ function MainApp() {
     pos: {
       title: 'Kasir POS & Pesanan',
       subtitle: 'Operasional kasir, katalog produk & menu foto, pesanan cepat, dan cetak struk WhatsApp',
+    },
+    shopping: {
+      title: 'Catatan Belanja & Bahan Baku',
+      subtitle: 'Perencanaan belanja stok dan bahan baku warung, pantau budget, dan otomatis catat ke buku kas',
     },
     bookkeeping: {
       title: 'Buku Kas & Pembukuan Warung',
@@ -240,6 +245,7 @@ function MainApp() {
         {/* View Routing with Scroll */}
         <div className="flex-1 overflow-y-auto">
           {activeTab === 'pos' && <POSView />}
+          {activeTab === 'shopping' && <ShoppingListManager />}
           {activeTab === 'bookkeeping' && <BookkeepingView />}
           {activeTab === 'reports' && <ReportsView />}
           {activeTab === 'menu' && <MenuManagementView />}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useWarung } from '../context/WarungContext';
 import { StoreSettings } from '../types';
 import { formatDate } from '../utils/format';
+import { BackupRestoreSection } from './BackupRestoreSection';
 import {
   Settings,
   Store,
@@ -18,6 +19,7 @@ import {
   KeyRound,
   Mail,
   Trash2,
+  Download,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -29,6 +31,7 @@ export const SettingsView: React.FC = () => {
     clearAllDatabase,
     currentUser,
     users,
+    triggerManualBackup,
   } = useWarung();
 
   const [formData, setFormData] = useState<StoreSettings>({ ...storeSettings });
@@ -45,20 +48,30 @@ export const SettingsView: React.FC = () => {
     <div className="max-w-4xl mx-auto p-3 sm:p-5 space-y-6">
       
       {/* Header */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center font-bold">
             ⚙️
           </span>
           <div>
             <h2 className="text-base sm:text-lg font-bold text-slate-900">
-              Pengaturan Profil Warung & Sistem
+              Pengaturan Usaha & Keamanan Warung
             </h2>
             <p className="text-xs text-slate-500">
-              Kelola identitas usaha, format struk kasir, dan sinkronisasi multi-device.
+              Kelola identitas usaha, format struk, cadangan data (backup), dan sinkronisasi multi-device.
             </p>
           </div>
         </div>
+
+        <button
+          id="header-backup-btn"
+          type="button"
+          onClick={() => triggerManualBackup('FULL')}
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition shrink-0 active:scale-95"
+        >
+          <Download size={15} />
+          <span>Backup Sekarang</span>
+        </button>
       </div>
 
       {/* Cloud Synchronization Section */}
@@ -103,6 +116,9 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Backup & Restore Dedicated Section */}
+      <BackupRestoreSection />
 
       {/* Main Settings Form */}
       <form onSubmit={handleSubmit} className="space-y-5">

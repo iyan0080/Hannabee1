@@ -11,6 +11,7 @@ import {
   openWhatsApp,
 } from '../utils/format';
 import { exportCustomersToExcel } from '../utils/exportData';
+import { pickContactFromPhone, isContactPickerSupported } from '../utils/contactPicker';
 import {
   Users,
   UserPlus,
@@ -37,6 +38,7 @@ import {
   Tag,
   Percent,
   Award,
+  Contact,
 } from 'lucide-react';
 
 export const CustomersView: React.FC = () => {
@@ -68,6 +70,24 @@ export const CustomersView: React.FC = () => {
   const [resellerDiscountValue, setResellerDiscountValue] = useState<number | ''>(10);
   const [initialDeposit, setInitialDeposit] = useState<number | ''>('');
   const [notes, setNotes] = useState('');
+  const [contactPickerStatus, setContactPickerStatus] = useState<string | null>(null);
+
+  // Handle Pick Contact from Phone
+  const handlePickPhoneContact = async () => {
+    setContactPickerStatus(null);
+    const res = await pickContactFromPhone();
+    if (res.success) {
+      if (res.phone) {
+        setPhone(res.phone);
+      }
+      if (res.name && !name.trim()) {
+        setName(res.name);
+      }
+    } else if (res.message) {
+      setContactPickerStatus(res.message);
+      setTimeout(() => setContactPickerStatus(null), 6000);
+    }
+  };
 
   // Top Up Deposit Modal
   const [topUpCustomer, setTopUpCustomer] = useState<Customer | null>(null);
@@ -153,7 +173,7 @@ export const CustomersView: React.FC = () => {
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !phone.trim()) return;
+    if (!name.trim()) return;
 
     if (editingId) {
       updateCustomer(editingId, {
@@ -962,18 +982,33 @@ export const CustomersView: React.FC = () => {
               )}
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">
-                  Nomor WhatsApp *
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-medium text-slate-700">
+                    Nomor WhatsApp (Opsional)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handlePickPhoneContact}
+                    className="text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-200 flex items-center gap-1 font-semibold transition active:scale-95 shadow-2xs"
+                    title="Buka daftar kontak buku telepon HP Anda"
+                  >
+                    <Contact size={14} className="text-blue-600" />
+                    <span>Cari Kontak HP</span>
+                  </button>
+                </div>
                 <input
                   id="cust-phone-input"
                   type="tel"
-                  required
-                  placeholder="Contoh: 081298765432"
+                  placeholder="Contoh: 081298765432 (Boleh kosong)"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-blue-500"
                 />
+                {contactPickerStatus && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-1.5 mt-1">
+                    ℹ️ {contactPickerStatus}
+                  </p>
+                )}
               </div>
 
               {!editingId && customerType === 'UMUM' && (

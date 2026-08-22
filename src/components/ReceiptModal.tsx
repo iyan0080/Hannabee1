@@ -185,13 +185,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
             {/* Items List */}
             <div className="py-2.5 border-b border-dashed border-slate-400">
-              <div className="flex justify-between font-bold text-[11px] mb-1.5 text-slate-900">
+              <div className="flex justify-between font-bold text-[11px] mb-2 text-slate-900">
                 <span>MENU / ITEM</span>
                 <span>TOTAL</span>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {transaction.items.map((item, idx) => (
-                  <div key={idx} className="text-[11px]">
+                  <div key={idx} className="text-[11px] pb-1.5 border-b border-slate-100 last:border-b-0 last:pb-0">
                     <div className="font-medium text-slate-900">{item.productName}</div>
                     {item.selectedVariants.length > 0 && (
                       <div className="text-[10px] text-slate-500 pl-1">

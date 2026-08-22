@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useWarung } from '../context/WarungContext';
 import { ProfitLossReport } from './ProfitLossReport';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
+import { DailyMenuSalesReport } from './DailyMenuSalesReport';
 import { TransactionsView } from './TransactionsView';
 import { ExpensesView } from './ExpensesView';
 import { exportProfitLossToExcel, exportProfitLossToPDF, exportTransactionsToExcel, exportTransactionsToPDF } from '../utils/exportData';
@@ -16,9 +17,10 @@ import {
   FileText,
   DollarSign,
   PieChart,
+  UtensilsCrossed,
 } from 'lucide-react';
 
-export type ReportSubTab = 'profit_loss' | 'analytics' | 'transactions' | 'expenses';
+export type ReportSubTab = 'profit_loss' | 'daily_menu_sales' | 'analytics' | 'transactions' | 'expenses';
 
 interface ReportsViewProps {
   initialSubTab?: ReportSubTab;
@@ -52,6 +54,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialSubTab = 'profi
       desc: 'Omzet, HPP, Laba Kotor & Bersih',
       icon: <FileSpreadsheet size={16} />,
       color: 'text-blue-600',
+    },
+    {
+      id: 'daily_menu_sales' as ReportSubTab,
+      label: 'Penjualan Menu & Varian',
+      desc: 'Laporan Penjualan Harian per Menu & Varian',
+      icon: <UtensilsCrossed size={16} />,
+      color: 'text-amber-600',
     },
     {
       id: 'analytics' as ReportSubTab,
@@ -157,6 +166,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialSubTab = 'profi
       {/* Sub-view Content */}
       <div className="pb-10">
         {activeSubTab === 'profit_loss' && <ProfitLossReport />}
+        {activeSubTab === 'daily_menu_sales' && <DailyMenuSalesReport />}
         {activeSubTab === 'analytics' && <AnalyticsDashboard />}
         {activeSubTab === 'transactions' && <TransactionsView />}
         {activeSubTab === 'expenses' && <ExpensesView />}
