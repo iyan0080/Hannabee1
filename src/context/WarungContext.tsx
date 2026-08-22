@@ -228,12 +228,49 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // Users state
   const [users, setUsers] = useState<AppUser[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.USERS);
-    return saved ? JSON.parse(saved) : INITIAL_USERS;
+    if (!saved) return INITIAL_USERS;
+    try {
+      const parsed: AppUser[] = JSON.parse(saved);
+      const migrated = parsed.map(u => {
+        if (u.id === 'usr-1' || u.email === 'hanna.hannabee@gmail.com') {
+          return { ...u, name: 'Hanna', email: 'hannaalmahyra24@gmail.com', role: 'Owner' };
+        }
+        if (u.id === 'usr-2' || u.email === 'iyan0080@gmail.com') {
+          return { ...u, name: 'IYAN', email: 'iyan0080@gmail.com', role: 'Admin 1' };
+        }
+        if (u.id === 'usr-3' || u.email === 'nirma.hannabee@gmail.com' || u.email === 'juni.bid89@gmail.com') {
+          return { ...u, name: 'JUNI', email: 'juni.bid89@gmail.com', role: 'Admin 2' };
+        }
+        return u;
+      });
+
+      if (!migrated.some(u => u.email === 'hannaalmahyra24@gmail.com')) {
+        migrated.unshift(INITIAL_USERS[0]);
+      }
+      if (!migrated.some(u => u.email === 'juni.bid89@gmail.com')) {
+        migrated.push(INITIAL_USERS[2]);
+      }
+      return migrated;
+    } catch {
+      return INITIAL_USERS;
+    }
   });
 
   const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+    try {
+      const parsed: AppUser = JSON.parse(saved);
+      if (parsed.email === 'hanna.hannabee@gmail.com' || parsed.id === 'usr-1') {
+        return { ...parsed, name: 'Hanna', email: 'hannaalmahyra24@gmail.com', role: 'Owner' };
+      }
+      if (parsed.email === 'nirma.hannabee@gmail.com' || parsed.id === 'usr-3') {
+        return { ...parsed, name: 'JUNI', email: 'juni.bid89@gmail.com', role: 'Admin 2' };
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
   });
 
   // Master Data state
@@ -507,7 +544,19 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     // 8. Subscribe to Users
     const unsubUsers = subscribeToUsers(cloudUsers => {
       if (cloudUsers.length > 0) {
-        setUsers(cloudUsers);
+        const migratedCloud = cloudUsers.map(u => {
+          if (u.id === 'usr-1' || u.email === 'hanna.hannabee@gmail.com') {
+            return { ...u, name: 'Hanna', email: 'hannaalmahyra24@gmail.com', role: 'Owner' };
+          }
+          if (u.id === 'usr-2' || u.email === 'iyan0080@gmail.com') {
+            return { ...u, name: 'IYAN', email: 'iyan0080@gmail.com', role: 'Admin 1' };
+          }
+          if (u.id === 'usr-3' || u.email === 'nirma.hannabee@gmail.com' || u.email === 'juni.bid89@gmail.com') {
+            return { ...u, name: 'JUNI', email: 'juni.bid89@gmail.com', role: 'Admin 2' };
+          }
+          return u;
+        });
+        setUsers(migratedCloud);
       }
       setSyncState(prev => ({ ...prev, status: 'synced', lastSyncedAt: new Date().toISOString() }));
     });

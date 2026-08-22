@@ -347,13 +347,13 @@ export const AuthScreen: React.FC = () => {
               <button
                 type="button"
                 id="quick-login-hanna"
-                onClick={() => handleQuickLogin('hanna.hannabee@gmail.com', 'hanna123')}
+                onClick={() => handleQuickLogin('hannaalmahyra24@gmail.com', 'hanna123')}
                 className="p-2.5 bg-white border border-slate-200 hover:border-amber-400 hover:bg-amber-50/40 rounded-xl text-left transition text-xs shadow-2xs group"
               >
                 <div className="font-bold text-slate-800 flex items-center justify-between">
                   <span className="text-amber-700">Hanna (Owner)</span>
                 </div>
-                <div className="text-[10px] text-slate-400 font-mono truncate">hanna.hannabee@gmail.com</div>
+                <div className="text-[10px] text-slate-400 font-mono truncate">hannaalmahyra24@gmail.com</div>
                 <div className="text-[10px] text-amber-600 font-medium mt-1">Klik Masuk →</div>
               </button>
 
@@ -372,14 +372,14 @@ export const AuthScreen: React.FC = () => {
 
               <button
                 type="button"
-                id="quick-login-nirma"
-                onClick={() => handleQuickLogin('nirma.hannabee@gmail.com', 'nirma123')}
+                id="quick-login-juni"
+                onClick={() => handleQuickLogin('juni.bid89@gmail.com', 'juni123')}
                 className="p-2.5 bg-white border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/40 rounded-xl text-left transition text-xs shadow-2xs group"
               >
                 <div className="font-bold text-slate-800 flex items-center justify-between">
-                  <span className="text-emerald-700">NIRMA (Admin 2)</span>
+                  <span className="text-emerald-700">JUNI (Admin 2)</span>
                 </div>
-                <div className="text-[10px] text-slate-400 font-mono truncate">nirma.hannabee@gmail.com</div>
+                <div className="text-[10px] text-slate-400 font-mono truncate">juni.bid89@gmail.com</div>
                 <div className="text-[10px] text-emerald-600 font-medium mt-1">Klik Masuk →</div>
               </button>
             </div>
