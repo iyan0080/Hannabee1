@@ -19,6 +19,7 @@ import {
   Mail,
   BookOpen,
   ClipboardList,
+  Sparkles,
 } from 'lucide-react';
 
 export type NavTab = 
@@ -26,6 +27,7 @@ export type NavTab =
   | 'shopping'
   | 'bookkeeping'
   | 'reports'
+  | 'gemini'
   | 'menu'
   | 'customers'
   | 'users'
@@ -64,6 +66,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const navItems: { id: NavTab; label: string; icon: React.ReactNode; badge?: number | string; badgeColor?: string }[] = [
     { id: 'pos', label: 'Dashboard & Kasir', icon: <LayoutDashboard size={18} />, badge: cartItemCount > 0 ? `${cartItemCount} item` : undefined, badgeColor: 'bg-blue-500' },
+    { id: 'gemini', label: 'Gemini AI Board', icon: <Sparkles size={18} className="text-amber-400" />, badge: 'AI 3.7', badgeColor: 'bg-amber-500' },
     { id: 'shopping', label: 'Catatan Belanja Bahan', icon: <ClipboardList size={18} />, badge: pendingShoppingCount > 0 ? `${pendingShoppingCount}` : undefined, badgeColor: 'bg-amber-500' },
     { id: 'bookkeeping', label: 'Buku Kas & Pembukuan', icon: <BookOpen size={18} /> },
     { id: 'reports', label: 'Pusat Laporan', icon: <BarChart3 size={18} />, badge: unpaidCount > 0 ? `${unpaidCount} Bon` : undefined, badgeColor: 'bg-amber-500' },

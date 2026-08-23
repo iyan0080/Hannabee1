@@ -479,3 +479,22 @@ export interface AutoBackupConfig {
   keepMaxSnapshots: number;
 }
 
+export interface GeminiChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string;
+  isError?: boolean;
+  actionSuggestion?: string;
+  modelUsed?: string;
+}
+
+export interface GeminiChatBoardNote {
+  id: string;
+  title: string;
+  content: string;
+  category: 'PROMO' | 'STRATEGY' | 'STOCK' | 'KASBON' | 'RECIPE' | 'FINANCE' | 'NOTE';
+  createdAt: string;
+  tags?: string[];
+}
+

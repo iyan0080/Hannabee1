@@ -9,9 +9,10 @@ import { MenuManagementView } from './components/MenuManagementView';
 import { CustomersView } from './components/CustomersView';
 import { UserManagementView } from './components/UserManagementView';
 import { SettingsView } from './components/SettingsView';
+import { GeminiChatBoard } from './components/GeminiChatBoard';
 import { AuthScreen } from './components/AuthScreen';
 import { exportProfitLossToExcel, exportProfitLossToPDF } from './utils/exportData';
-import { Menu, Plus, FileSpreadsheet, FileText, ShoppingCart, BarChart3, LogOut, UserCheck, AlertTriangle, X, Check } from 'lucide-react';
+import { Menu, Plus, FileSpreadsheet, FileText, ShoppingCart, BarChart3, LogOut, UserCheck, AlertTriangle, X, Check, Sparkles } from 'lucide-react';
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState<NavTab>('pos');
@@ -105,6 +106,10 @@ function MainApp() {
       title: 'Kasir POS & Pesanan',
       subtitle: 'Operasional kasir, katalog produk & menu foto, pesanan cepat, dan cetak struk WhatsApp',
     },
+    gemini: {
+      title: 'Gemini Business AI & Strategy Board',
+      subtitle: 'Asisten AI konsultan bisnis warung, analitik omzet cerdas, generator promo WhatsApp, dan papan catatan strategi',
+    },
     shopping: {
       title: 'Catatan Belanja & Bahan Baku',
       subtitle: 'Perencanaan belanja stok dan bahan baku warung, pantau budget, dan otomatis catat ke buku kas',
@@ -169,6 +174,21 @@ function MainApp() {
 
           {/* Quick Header Actions & User Info */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Quick Gemini AI Header Button */}
+            <button
+              id="header-gemini-ai-btn"
+              onClick={() => handleTabChange('gemini')}
+              className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                activeTab === 'gemini'
+                  ? 'bg-amber-500 text-slate-950 shadow-xs'
+                  : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
+              }`}
+              title="Buka Gemini Business AI & Strategy Board"
+            >
+              <Sparkles size={14} className="text-amber-600 animate-pulse" />
+              <span className="hidden sm:inline">Gemini AI</span>
+            </button>
+
             <button
               id="header-excel-btn"
               onClick={handleQuickExcel}
@@ -245,6 +265,7 @@ function MainApp() {
         {/* View Routing with Scroll */}
         <div className="flex-1 overflow-y-auto">
           {activeTab === 'pos' && <POSView />}
+          {activeTab === 'gemini' && <GeminiChatBoard />}
           {activeTab === 'shopping' && <ShoppingListManager />}
           {activeTab === 'bookkeeping' && <BookkeepingView />}
           {activeTab === 'reports' && <ReportsView />}
