@@ -1,6 +1,6 @@
 {
   "name": "HannaBee POS & Pembukuan",
-  "description": "Aplikasi kasir POS dan pembukuan HannaBee lengkap dengan fitur backup data (Pelanggan, Menu, Penjualan, dan Kas) JSON, backup otomatis ke penyimpanan lokal HP Admin 1 setiap jam 00.00 WIB, diskon fleksibel di keranjang, Auto-Jurnal real-time, buku kas mutasi, opname tutup kas laci, laporan laba rugi, cetak PDF/Excel, dan sinkronisasi data cloud multi-perangkat.",
+  "description": "Aplikasi kasir POS dan pembukuan HannaBee lengkap dengan fitur input & edit data penjualan kemarin (susulan), backup data (Pelanggan, Menu, Penjualan, dan Kas) JSON, backup otomatis ke penyimpanan lokal HP Admin 1 setiap jam 00.00 WIB, diskon fleksibel di keranjang, Auto-Jurnal real-time, buku kas mutasi, opname tutup kas laci, laporan laba rugi, cetak PDF/Excel, dan sinkronisasi data cloud multi-perangkat.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

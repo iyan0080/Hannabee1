@@ -4,6 +4,8 @@ import { Transaction, PaymentMethod, TransactionStatus } from '../types';
 import { formatRupiah, formatDate, openWhatsApp, generateReceiptWhatsAppText } from '../utils/format';
 import { ReceiptModal } from './ReceiptModal';
 import { CancelReturnModal } from './CancelReturnModal';
+import { RetroactiveSaleModal } from './RetroactiveSaleModal';
+import { EditTransactionModal } from './EditTransactionModal';
 import { exportTransactionsToExcel, exportTransactionsToPDF } from '../utils/exportData';
 import {
   Search,
@@ -21,6 +23,9 @@ import {
   Ban,
   Undo2,
   Info,
+  Plus,
+  Edit3,
+  History,
 } from 'lucide-react';
 
 export const TransactionsView: React.FC = () => {
@@ -30,13 +35,11 @@ export const TransactionsView: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'ALL' | TransactionStatus>('ALL');
   const [methodFilter, setMethodFilter] = useState<'ALL' | PaymentMethod>('ALL');
 
-  // Receipt Modal
+  // Modals
+  const [showRetroactiveModal, setShowRetroactiveModal] = useState<boolean>(false);
+  const [editingTrx, setEditingTrx] = useState<Transaction | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<Transaction | null>(null);
-
-  // Cancel & Return Modal
   const [cancelReturnTrx, setCancelReturnTrx] = useState<Transaction | null>(null);
-
-  // Settle Debt Modal
   const [settlingTrx, setSettlingTrx] = useState<Transaction | null>(null);
   const [settleNotes, setSettleNotes] = useState('');
 
@@ -104,6 +107,15 @@ export const TransactionsView: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            id="open-retroactive-sale-btn"
+            onClick={() => setShowRetroactiveModal(true)}
+            className="px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
+          >
+            <History size={15} className="text-teal-200" />
+            <span>+ Input Penjualan Susulan (Kemarin)</span>
+          </button>
+
           <button
             id="export-trx-excel-btn"
             onClick={() => exportTransactionsToExcel(filteredTransactions, storeSettings)}
@@ -200,10 +212,23 @@ export const TransactionsView: React.FC = () => {
                     }`}
                   >
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className={`font-bold font-mono ${isCancelled ? 'text-red-700 line-through' : 'text-slate-900'}`}>
                           {trx.invoiceNumber}
                         </span>
+                        {trx.isRetroactive && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-teal-100 text-teal-800 border border-teal-200">
+                            Susulan Kemarin
+                          </span>
+                        )}
+                        {trx.editedAt && (
+                          <span
+                            className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200 cursor-help"
+                            title={`Diedit oleh ${trx.editedBy || 'Admin'}${trx.editReason ? `: ${trx.editReason}` : ''}`}
+                          >
+                            Diedit
+                          </span>
+                        )}
                         {isCancelled && (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-100 text-red-700">
                             BATAL
@@ -219,6 +244,11 @@ export const TransactionsView: React.FC = () => {
                       {trx.cancellationReason && (
                         <div className="text-[10px] text-red-600 italic truncate max-w-[180px] mt-0.5" title={trx.cancellationReason}>
                           Alasan: "{trx.cancellationReason}"
+                        </div>
+                      )}
+                      {trx.editReason && !isCancelled && (
+                        <div className="text-[10px] text-amber-700 italic truncate max-w-[180px] mt-0.5" title={trx.editReason}>
+                          Koreksi: "{trx.editReason}"
                         </div>
                       )}
                     </td>
@@ -332,6 +362,16 @@ export const TransactionsView: React.FC = () => {
                           title="Kirim Struk via WhatsApp"
                         >
                           <MessageCircle size={14} />
+                        </button>
+
+                        {/* Edit Button (Admin / Owner) */}
+                        <button
+                          id={`edit-trx-btn-${trx.id}`}
+                          onClick={() => setEditingTrx(trx)}
+                          className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg transition"
+                          title="Edit / Koreksi Data Penjualan Kemarin"
+                        >
+                          <Edit3 size={14} />
                         </button>
 
                         {/* Pelunasan Kasbon button if unpaid */}
@@ -452,6 +492,24 @@ export const TransactionsView: React.FC = () => {
           transaction={selectedReceipt}
           storeSettings={storeSettings}
           onClose={() => setSelectedReceipt(null)}
+        />
+      )}
+
+      {/* Input Penjualan Susulan (Kemarin / Lampau) Modal */}
+      {showRetroactiveModal && (
+        <RetroactiveSaleModal
+          onClose={() => setShowRetroactiveModal(false)}
+          onSuccess={(trx) => {
+            setSelectedReceipt(trx);
+          }}
+        />
+      )}
+
+      {/* Edit Transaksi (Kemarin / Koreksi) Modal */}
+      {editingTrx && (
+        <EditTransactionModal
+          transaction={editingTrx}
+          onClose={() => setEditingTrx(null)}
         />
       )}
 

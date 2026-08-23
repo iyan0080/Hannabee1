@@ -63,6 +63,7 @@ import {
   saveProductToFirestore,
   deleteProductFromFirestore,
   saveTransactionToFirestore,
+  deleteTransactionFromFirestore,
   saveExpenseToFirestore,
   deleteExpenseFromFirestore,
   saveCustomerToFirestore,
@@ -156,6 +157,41 @@ interface WarungContextType {
       restockProducts: boolean;
     }
   ) => { success: boolean; message?: string };
+  addRetroactiveTransaction: (data: {
+    timestamp: string;
+    items: CartItem[];
+    paymentMethod: PaymentMethod;
+    discountAmount?: number;
+    discountType?: DiscountType;
+    discountRate?: number;
+    tax?: number;
+    cashGiven?: number;
+    selectedCustomer?: Customer | null;
+    notes?: string;
+    cashierName?: string;
+    adjustStock?: boolean;
+    invoiceNumber?: string;
+  }) => { success: boolean; transaction?: Transaction; message?: string };
+  updateTransaction: (
+    transactionId: string,
+    updatedData: {
+      timestamp?: string;
+      invoiceNumber?: string;
+      items?: CartItem[];
+      paymentMethod?: PaymentMethod;
+      discountAmount?: number;
+      discountType?: DiscountType;
+      discountRate?: number;
+      tax?: number;
+      cashGiven?: number;
+      selectedCustomer?: Customer | null;
+      notes?: string;
+      cashierName?: string;
+      adjustStockDifference?: boolean;
+      editReason?: string;
+    }
+  ) => { success: boolean; transaction?: Transaction; message?: string };
+  deleteTransaction: (transactionId: string, revertStock?: boolean) => { success: boolean; message?: string };
 
   // Product CRUD
   addProduct: (product: Omit<Product, 'id'>) => void;
@@ -1504,6 +1540,378 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     [transactions, currentUser, storeSettings]
   );
 
+  // 3. Input Penjualan Susulan (Kemarin / Waktu Lampau)
+  const addRetroactiveTransaction = useCallback(
+    (data: {
+      timestamp: string;
+      items: CartItem[];
+      paymentMethod: PaymentMethod;
+      discountAmount?: number;
+      discountType?: DiscountType;
+      discountRate?: number;
+      tax?: number;
+      cashGiven?: number;
+      selectedCustomer?: Customer | null;
+      notes?: string;
+      cashierName?: string;
+      adjustStock?: boolean;
+      invoiceNumber?: string;
+    }): { success: boolean; transaction?: Transaction; message?: string } => {
+      if (!data.items || data.items.length === 0) {
+        return { success: false, message: 'Daftar item belanja masih kosong' };
+      }
+
+      const subtotal = data.items.reduce((sum, item) => sum + item.subtotal, 0);
+      const totalCost = data.items.reduce((sum, item) => sum + item.subtotalCost, 0);
+      const discountVal = data.discountAmount || 0;
+      const taxVal = data.tax !== undefined ? data.tax : (storeSettings.enableTax ? (subtotal * storeSettings.taxRate) / 100 : 0);
+      const finalAmount = Math.max(0, subtotal - discountVal + taxVal);
+      const grossProfit = finalAmount - totalCost;
+
+      const isDeposit = data.paymentMethod === 'SALDO_DEPOSIT';
+      const isKasbon = data.paymentMethod === 'KASBON';
+      const amountPaid = isKasbon ? 0 : (data.paymentMethod === 'TUNAI' ? (data.cashGiven || finalAmount) : finalAmount);
+      const change = (data.paymentMethod === 'TUNAI' && (data.cashGiven || 0) > finalAmount) ? (data.cashGiven || 0) - finalAmount : 0;
+
+      let remainingDepositAfter: number | undefined = undefined;
+      if (isDeposit && data.selectedCustomer) {
+        remainingDepositAfter = Math.max(0, (data.selectedCustomer.depositBalance || 0) - finalAmount);
+      }
+
+      const parsedDate = new Date(data.timestamp);
+      const dateFormatted = isNaN(parsedDate.getTime())
+        ? new Date().toISOString().slice(0, 10).replace(/-/g, '')
+        : parsedDate.toISOString().slice(0, 10).replace(/-/g, '');
+      const randCode = Math.floor(1000 + Math.random() * 9000);
+      const invoiceNumber = data.invoiceNumber?.trim() || `WRG-${dateFormatted}-${randCode}`;
+
+      const newTransaction: Transaction = {
+        id: 'trx-retro-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+        invoiceNumber,
+        timestamp: isNaN(parsedDate.getTime()) ? new Date().toISOString() : parsedDate.toISOString(),
+        items: [...data.items],
+        subtotal,
+        discount: discountVal,
+        discountType: data.discountType,
+        discountRate: data.discountRate,
+        tax: taxVal,
+        finalAmount,
+        totalCost,
+        grossProfit,
+        amountPaid,
+        change,
+        paymentMethod: data.paymentMethod,
+        cashierName: data.cashierName || currentUser?.name || storeSettings.cashierName || 'Kasir',
+        customerId: data.selectedCustomer?.id,
+        customerName: data.selectedCustomer?.name || 'Pelanggan Umum',
+        customerPhone: data.selectedCustomer?.phone,
+        customerType: data.selectedCustomer?.customerType || 'UMUM',
+        status: isKasbon ? 'BELUM_LUNAS' : 'LUNAS',
+        depositUsed: isDeposit ? finalAmount : undefined,
+        remainingDeposit: remainingDepositAfter,
+        notes: data.notes,
+        isRetroactive: true,
+      };
+
+      // 1. Add Transaction locally & in Firestore
+      setTransactions(prev => {
+        const next = [newTransaction, ...prev];
+        return next.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      });
+      saveTransactionToFirestore(newTransaction);
+
+      // 2. Reduce stock if adjustStock is true
+      if (data.adjustStock !== false) {
+        setProducts(prevProducts => {
+          return prevProducts.map(p => {
+            const itemPurchased = data.items.find(ci => ci.productId === p.id);
+            if (itemPurchased) {
+              const remainingStock = Math.max(0, p.stock - itemPurchased.quantity);
+              const updatedProd = { ...p, stock: remainingStock };
+              saveProductToFirestore(updatedProd);
+              return updatedProd;
+            }
+            return p;
+          });
+        });
+      }
+
+      // 3. Update Customer records
+      if (data.selectedCustomer) {
+        setCustomers(prevCustomers => {
+          return prevCustomers.map(c => {
+            if (c.id === data.selectedCustomer!.id) {
+              let newDeposit = c.depositBalance || 0;
+              const newHistory = c.depositHistory ? [...c.depositHistory] : [];
+
+              if (isDeposit) {
+                newDeposit = Math.max(0, newDeposit - finalAmount);
+                newHistory.unshift({
+                  id: 'dep-' + Date.now(),
+                  timestamp: newTransaction.timestamp,
+                  type: 'PAYMENT',
+                  amount: finalAmount,
+                  invoiceNumber,
+                  notes: `Pembayaran pesanan susulan nota ${invoiceNumber}`,
+                  remainingBalance: newDeposit,
+                });
+              }
+
+              const updatedCust: Customer = {
+                ...c,
+                totalTransactions: c.totalTransactions + 1,
+                totalSpent: c.totalSpent + finalAmount,
+                totalDebt: isKasbon ? c.totalDebt + finalAmount : c.totalDebt,
+                depositBalance: newDeposit,
+                depositHistory: newHistory,
+              };
+              saveCustomerToFirestore(updatedCust);
+              return updatedCust;
+            }
+            return c;
+          });
+        });
+      }
+
+      return { success: true, transaction: newTransaction };
+    },
+    [storeSettings, currentUser]
+  );
+
+  // 4. Edit / Update Data Penjualan (Kemarin / Transaksi Tersimpan)
+  const updateTransaction = useCallback(
+    (
+      transactionId: string,
+      updatedData: {
+        timestamp?: string;
+        invoiceNumber?: string;
+        items?: CartItem[];
+        paymentMethod?: PaymentMethod;
+        discountAmount?: number;
+        discountType?: DiscountType;
+        discountRate?: number;
+        tax?: number;
+        cashGiven?: number;
+        selectedCustomer?: Customer | null;
+        notes?: string;
+        cashierName?: string;
+        adjustStockDifference?: boolean;
+        editReason?: string;
+      }
+    ): { success: boolean; transaction?: Transaction; message?: string } => {
+      const existingTrx = transactions.find(t => t.id === transactionId);
+      if (!existingTrx) {
+        return { success: false, message: 'Transaksi tidak ditemukan' };
+      }
+
+      const items = updatedData.items || existingTrx.items;
+      if (!items || items.length === 0) {
+        return { success: false, message: 'Transaksi harus memiliki minimal 1 item menu' };
+      }
+
+      const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
+      const totalCost = items.reduce((sum, item) => sum + item.subtotalCost, 0);
+      const discountVal = updatedData.discountAmount !== undefined ? updatedData.discountAmount : existingTrx.discount;
+      const taxVal = updatedData.tax !== undefined ? updatedData.tax : existingTrx.tax;
+      const finalAmount = Math.max(0, subtotal - discountVal + taxVal);
+      const grossProfit = finalAmount - totalCost;
+
+      const paymentMethod = updatedData.paymentMethod || existingTrx.paymentMethod;
+      const isDeposit = paymentMethod === 'SALDO_DEPOSIT';
+      const isKasbon = paymentMethod === 'KASBON';
+      const cashGiven = updatedData.cashGiven !== undefined ? updatedData.cashGiven : existingTrx.amountPaid;
+      const amountPaid = isKasbon ? 0 : (paymentMethod === 'TUNAI' ? (cashGiven || finalAmount) : finalAmount);
+      const change = (paymentMethod === 'TUNAI' && cashGiven > finalAmount) ? cashGiven - finalAmount : 0;
+
+      const customerId = updatedData.selectedCustomer !== undefined ? (updatedData.selectedCustomer?.id) : existingTrx.customerId;
+      const customerName = updatedData.selectedCustomer !== undefined ? (updatedData.selectedCustomer?.name || 'Pelanggan Umum') : existingTrx.customerName;
+      const customerPhone = updatedData.selectedCustomer !== undefined ? updatedData.selectedCustomer?.phone : existingTrx.customerPhone;
+      const customerType = updatedData.selectedCustomer !== undefined ? (updatedData.selectedCustomer?.customerType || 'UMUM') : existingTrx.customerType;
+
+      const updatedTrx: Transaction = {
+        ...existingTrx,
+        invoiceNumber: updatedData.invoiceNumber?.trim() || existingTrx.invoiceNumber,
+        timestamp: updatedData.timestamp || existingTrx.timestamp,
+        items: [...items],
+        subtotal,
+        discount: discountVal,
+        discountType: updatedData.discountType !== undefined ? updatedData.discountType : existingTrx.discountType,
+        discountRate: updatedData.discountRate !== undefined ? updatedData.discountRate : existingTrx.discountRate,
+        tax: taxVal,
+        finalAmount,
+        totalCost,
+        grossProfit,
+        amountPaid,
+        change,
+        paymentMethod,
+        cashierName: updatedData.cashierName || existingTrx.cashierName,
+        customerId,
+        customerName,
+        customerPhone,
+        customerType,
+        status: isKasbon ? 'BELUM_LUNAS' : (existingTrx.status === 'BATAL' ? 'BATAL' : (existingTrx.status === 'DIRETUR_SEBAGIAN' ? 'DIRETUR_SEBAGIAN' : 'LUNAS')),
+        notes: updatedData.notes !== undefined ? updatedData.notes : existingTrx.notes,
+        editedAt: new Date().toISOString(),
+        editedBy: currentUser?.name || 'Admin',
+        editReason: updatedData.editReason,
+      };
+
+      // 1. Update in state & Firestore
+      setTransactions(prev => {
+        const next = prev.map(t => (t.id === transactionId ? updatedTrx : t));
+        return next.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      });
+      saveTransactionToFirestore(updatedTrx);
+
+      // 2. Adjust Stock differences if requested
+      if (updatedData.adjustStockDifference !== false && existingTrx.status !== 'BATAL') {
+        const oldQtyMap = new Map<string, number>();
+        existingTrx.items.forEach(i => {
+          oldQtyMap.set(i.productId, (oldQtyMap.get(i.productId) || 0) + i.quantity);
+        });
+
+        const newQtyMap = new Map<string, number>();
+        items.forEach(i => {
+          newQtyMap.set(i.productId, (newQtyMap.get(i.productId) || 0) + i.quantity);
+        });
+
+        const affectedProductIds = new Set([...Array.from(oldQtyMap.keys()), ...Array.from(newQtyMap.keys())]);
+
+        setProducts(prevProducts => {
+          return prevProducts.map(p => {
+            if (affectedProductIds.has(p.id)) {
+              const oldQty = oldQtyMap.get(p.id) || 0;
+              const newQty = newQtyMap.get(p.id) || 0;
+              const deltaQty = newQty - oldQty;
+              const updatedStock = Math.max(0, p.stock - deltaQty);
+              const updatedProd = { ...p, stock: updatedStock };
+              saveProductToFirestore(updatedProd);
+              return updatedProd;
+            }
+            return p;
+          });
+        });
+      }
+
+      // 3. Adjust Customer records if customer attached
+      const oldCustomerId = existingTrx.customerId;
+      const newCustomerId = customerId;
+      const amountDiff = finalAmount - existingTrx.finalAmount;
+
+      if (oldCustomerId && oldCustomerId === newCustomerId) {
+        setCustomers(prevCustomers => {
+          return prevCustomers.map(c => {
+            if (c.id === newCustomerId) {
+              const oldWasKasbon = existingTrx.paymentMethod === 'KASBON' && existingTrx.status === 'BELUM_LUNAS';
+              const newIsKasbon = isKasbon;
+              let debtDiff = 0;
+              if (oldWasKasbon && newIsKasbon) debtDiff = amountDiff;
+              else if (!oldWasKasbon && newIsKasbon) debtDiff = finalAmount;
+              else if (oldWasKasbon && !newIsKasbon) debtDiff = -existingTrx.finalAmount;
+
+              const updatedCust = {
+                ...c,
+                totalSpent: Math.max(0, c.totalSpent + amountDiff),
+                totalDebt: Math.max(0, c.totalDebt + debtDiff),
+              };
+              saveCustomerToFirestore(updatedCust);
+              return updatedCust;
+            }
+            return c;
+          });
+        });
+      } else {
+        if (oldCustomerId) {
+          setCustomers(prevCustomers => {
+            return prevCustomers.map(c => {
+              if (c.id === oldCustomerId) {
+                const oldWasKasbon = existingTrx.paymentMethod === 'KASBON' && existingTrx.status === 'BELUM_LUNAS';
+                const updatedCust = {
+                  ...c,
+                  totalTransactions: Math.max(0, c.totalTransactions - 1),
+                  totalSpent: Math.max(0, c.totalSpent - existingTrx.finalAmount),
+                  totalDebt: oldWasKasbon ? Math.max(0, c.totalDebt - existingTrx.finalAmount) : c.totalDebt,
+                };
+                saveCustomerToFirestore(updatedCust);
+                return updatedCust;
+              }
+              return c;
+            });
+          });
+        }
+        if (newCustomerId) {
+          setCustomers(prevCustomers => {
+            return prevCustomers.map(c => {
+              if (c.id === newCustomerId) {
+                const updatedCust = {
+                  ...c,
+                  totalTransactions: c.totalTransactions + 1,
+                  totalSpent: c.totalSpent + finalAmount,
+                  totalDebt: isKasbon ? c.totalDebt + finalAmount : c.totalDebt,
+                };
+                saveCustomerToFirestore(updatedCust);
+                return updatedCust;
+              }
+              return c;
+            });
+          });
+        }
+      }
+
+      return { success: true, transaction: updatedTrx };
+    },
+    [transactions, currentUser]
+  );
+
+  // 5. Delete Transaction (Admin / Owner)
+  const deleteTransaction = useCallback(
+    (transactionId: string, revertStock: boolean = true): { success: boolean; message?: string } => {
+      const existingTrx = transactions.find(t => t.id === transactionId);
+      if (!existingTrx) {
+        return { success: false, message: 'Transaksi tidak ditemukan' };
+      }
+
+      if (revertStock && existingTrx.status !== 'BATAL') {
+        setProducts(prevProducts => {
+          return prevProducts.map(p => {
+            const item = existingTrx.items.find(i => i.productId === p.id);
+            if (item) {
+              const updatedProd = { ...p, stock: p.stock + item.quantity };
+              saveProductToFirestore(updatedProd);
+              return updatedProd;
+            }
+            return p;
+          });
+        });
+      }
+
+      if (existingTrx.customerId) {
+        setCustomers(prevCustomers => {
+          return prevCustomers.map(c => {
+            if (c.id === existingTrx.customerId) {
+              const wasKasbon = existingTrx.paymentMethod === 'KASBON' && existingTrx.status === 'BELUM_LUNAS';
+              const updatedCust = {
+                ...c,
+                totalTransactions: Math.max(0, c.totalTransactions - 1),
+                totalSpent: Math.max(0, c.totalSpent - existingTrx.finalAmount),
+                totalDebt: wasKasbon ? Math.max(0, c.totalDebt - existingTrx.finalAmount) : c.totalDebt,
+              };
+              saveCustomerToFirestore(updatedCust);
+              return updatedCust;
+            }
+            return c;
+          });
+        });
+      }
+
+      setTransactions(prev => prev.filter(t => t.id !== transactionId));
+      deleteTransactionFromFirestore(transactionId);
+
+      return { success: true };
+    },
+    [transactions]
+  );
+
   // Product CRUD
   const addProduct = useCallback((newProdData: Omit<Product, 'id'>) => {
     const newProduct: Product = {
@@ -2723,6 +3131,9 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         processCheckout,
         cancelTransaction,
         returnTransactionItems,
+        addRetroactiveTransaction,
+        updateTransaction,
+        deleteTransaction,
         addProduct,
         updateProduct,
         deleteProduct,

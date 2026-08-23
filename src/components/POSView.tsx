@@ -5,6 +5,7 @@ import { formatRupiah } from '../utils/format';
 import { ReceiptModal } from './ReceiptModal';
 import { CashCalculatorModal } from './CashCalculatorModal';
 import { ItemDiscountModal } from './ItemDiscountModal';
+import { RetroactiveSaleModal } from './RetroactiveSaleModal';
 import { calculateSmartCashSuggestions } from '../utils/cashSuggestions';
 import { pickContactFromPhone, isContactPickerSupported } from '../utils/contactPicker';
 import confetti from 'canvas-confetti';
@@ -128,6 +129,9 @@ export const POSView: React.FC = () => {
 
   // Item Discount Modal State
   const [discountModalItem, setDiscountModalItem] = useState<CartItem | null>(null);
+
+  // Retroactive Sale Modal State
+  const [showRetroactiveModal, setShowRetroactiveModal] = useState<boolean>(false);
 
   // Filtered Products (Exclude archived products)
   const filteredProducts = useMemo(() => {
@@ -289,8 +293,19 @@ export const POSView: React.FC = () => {
                 </button>
               )}
             </div>
-            <div className="text-xs text-slate-500 font-medium px-2 whitespace-nowrap">
-              {filteredProducts.length} Produk Tersedia
+            <div className="flex items-center gap-2">
+              <div className="text-xs text-slate-500 font-medium px-2 whitespace-nowrap hidden sm:block">
+                {filteredProducts.length} Menu
+              </div>
+              <button
+                id="pos-open-retroactive-btn"
+                type="button"
+                onClick={() => setShowRetroactiveModal(true)}
+                className="px-2.5 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1 shadow-2xs"
+                title="Input data penjualan kemarin yang belum tercatat"
+              >
+                <span>📅 Susulan Kemarin</span>
+              </button>
             </div>
           </div>
 
@@ -1446,6 +1461,16 @@ export const POSView: React.FC = () => {
           onClose={() => setDiscountModalItem(null)}
           onApplyDiscount={(id, type, value) => {
             setCartItemDiscount(id, type, value);
+          }}
+        />
+      )}
+
+      {/* 6. Retroactive Sale Modal (Input Penjualan Kemarin) */}
+      {showRetroactiveModal && (
+        <RetroactiveSaleModal
+          onClose={() => setShowRetroactiveModal(false)}
+          onSuccess={(trx) => {
+            setCompletedTransaction(trx);
           }}
         />
       )}

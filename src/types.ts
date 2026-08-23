@@ -133,6 +133,12 @@ export interface Transaction {
   returnRecords?: ReturnRecord[];
   totalReturnedAmount?: number; // Total rupiah dana yang sudah dikembalikan/diretur
   totalReturnedCost?: number;   // Total HPP yang sudah diretur
+  // Transaksi Susulan & Riwayat Edit
+  isRetroactive?: boolean;
+  retroactiveDateLabel?: string;
+  editedAt?: string;
+  editedBy?: string;
+  editReason?: string;
 }
 
 export type ExpenseCategory = 

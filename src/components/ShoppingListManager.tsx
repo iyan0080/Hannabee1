@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useWarung } from '../context/WarungContext';
 import { ShoppingItem, ShoppingItemPriority, ShoppingItemStatus } from '../types';
-import { formatRupiah, formatDate } from '../utils/format';
+import { formatRupiah, formatDate, openWhatsApp, cleanPhoneNumber } from '../utils/format';
+import { pickContactFromPhone, isContactPickerSupported } from '../utils/contactPicker';
 import {
   ClipboardList,
   Plus,
@@ -29,6 +30,13 @@ import {
   Square,
   ArrowDownCircle,
   ExternalLink,
+  MessageCircle,
+  Send,
+  User,
+  Users,
+  Smartphone,
+  Share2,
+  Filter,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -69,6 +77,7 @@ export const ShoppingListManager: React.FC = () => {
     toggleShoppingItemStatus,
     recordShoppingItemAsExpense,
     storeSettings,
+    users,
   } = useWarung();
 
   // Search & Filter
@@ -78,6 +87,19 @@ export const ShoppingListManager: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'PURCHASED'>('ALL');
   const [marketChecklistMode, setMarketChecklistMode] = useState(false);
   const [copiedWa, setCopiedWa] = useState(false);
+
+  // WhatsApp Modal state
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [waRecipientPhone, setWaRecipientPhone] = useState('');
+  const [waRecipientName, setWaRecipientName] = useState('');
+  const [waScopeFilter, setWaScopeFilter] = useState<'PENDING' | 'URGENT' | 'ALL' | 'CUSTOM'>('PENDING');
+  const [waSelectedCategory, setWaSelectedCategory] = useState('Semua Kategori');
+  const [waIncludePrice, setWaIncludePrice] = useState(true);
+  const [waIncludeLocation, setWaIncludeLocation] = useState(true);
+  const [waIncludeNotes, setWaIncludeNotes] = useState(true);
+  const [waIncludeReceiptReminder, setWaIncludeReceiptReminder] = useState(true);
+  const [waSelectedItemIds, setWaSelectedItemIds] = useState<string[]>([]);
+  const [isPickingContact, setIsPickingContact] = useState(false);
 
   // Add / Edit Modal
   const [showModal, setShowModal] = useState(false);
@@ -212,8 +234,138 @@ export const ShoppingListManager: React.FC = () => {
     setExpenseItem(null);
   };
 
+  // Open WhatsApp Modal with initial presets
+  const handleOpenWhatsAppModal = (specificItem?: ShoppingItem) => {
+    if (specificItem) {
+      setWaScopeFilter('CUSTOM');
+      setWaSelectedItemIds([specificItem.id]);
+    } else {
+      setWaScopeFilter('PENDING');
+      setWaSelectedItemIds(pendingItems.map(i => i.id));
+    }
+    setWaRecipientPhone('');
+    setWaRecipientName('');
+    setShowWhatsAppModal(true);
+  };
+
+  // Contact Picker Handler from mobile
+  const handlePickContact = async () => {
+    setIsPickingContact(true);
+    try {
+      const res = await pickContactFromPhone();
+      if (res.success && res.phone) {
+        setWaRecipientPhone(res.phone);
+        if (res.name) {
+          setWaRecipientName(res.name);
+        }
+      } else if (res.message && !res.message.includes('dibatalkan')) {
+        alert(res.message);
+      }
+    } catch (err: any) {
+      console.warn('Contact picker error:', err);
+    } finally {
+      setIsPickingContact(false);
+    }
+  };
+
+  // Items to include in WhatsApp text
+  const waTargetItems = useMemo(() => {
+    return shoppingItems.filter(item => {
+      if (waScopeFilter === 'PENDING') {
+        if (item.status === 'PURCHASED') return false;
+      } else if (waScopeFilter === 'URGENT') {
+        if (item.status === 'PURCHASED' || item.priority !== 'URGENT') return false;
+      } else if (waScopeFilter === 'CUSTOM') {
+        if (!waSelectedItemIds.includes(item.id)) return false;
+      }
+
+      if (waSelectedCategory !== 'Semua Kategori' && item.category !== waSelectedCategory) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [shoppingItems, waScopeFilter, waSelectedCategory, waSelectedItemIds]);
+
+  const waTargetBudget = waTargetItems.reduce(
+    (sum, item) => sum + (item.estimatedPrice || 0),
+    0
+  );
+
+  // Generate WhatsApp Message text
+  const generateWhatsAppMessage = () => {
+    const greeting = waRecipientName ? `Halo Kak *${waRecipientName}*,\n` : '';
+    let text = `${greeting}🛒 *CATATAN BELANJA & BAHAN BAKU*\n`;
+    text += `🏬 *${storeSettings.storeName}*\n`;
+    text += `📅 Tanggal: ${new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}\n`;
+    if (storeSettings.phone) {
+      text += `📞 Kontak: ${storeSettings.phone}\n`;
+    }
+    text += `----------------------------------------\n`;
+
+    if (waTargetItems.length === 0) {
+      text += `_Tidak ada catatan belanja yang dipilih._\n`;
+    } else {
+      let currentCat = '';
+      waTargetItems.forEach((item, idx) => {
+        if (item.category !== currentCat) {
+          currentCat = item.category;
+          text += `\n📦 *[${currentCat.toUpperCase()}]*\n`;
+        }
+        const urgentTag = item.priority === 'URGENT' ? ' 🔴 *HABIS/URGENT!*' : item.priority === 'HIGH' ? ' 🟠 *Penting*' : '';
+        const priceText = waIncludePrice && item.estimatedPrice > 0 ? ` (~${formatRupiah(item.estimatedPrice)})` : '';
+        const locText = waIncludeLocation && item.supplierLocation ? ` 📍 _[${item.supplierLocation}]_` : '';
+        const checkStatus = item.status === 'PURCHASED' ? '[✓]' : '[ ]';
+
+        text += `${checkStatus} ${idx + 1}. *${item.name}* - ${item.quantity} ${item.unit}${priceText}${urgentTag}${locText}\n`;
+        
+        if (waIncludeNotes && item.notes) {
+          text += `    _Ket: ${item.notes}_\n`;
+        }
+      });
+    }
+
+    text += `\n----------------------------------------\n`;
+    if (waIncludePrice && waTargetBudget > 0) {
+      text += `💰 *Estimasi Total Anggaran : ${formatRupiah(waTargetBudget)}*\n`;
+    }
+    text += `📊 *Total Barang: ${waTargetItems.length} item*\n`;
+    
+    if (waIncludeReceiptReminder) {
+      text += `\n📌 *Catatan untuk Petugas Belanja:*\n`;
+      text += `1. Harap ceklis/beri tanda barang saat sudah dibeli.\n`;
+      text += `2. *Wajib simpan nota/struk belanja* untuk pembukuan kas warung.\n`;
+      text += `3. Jika ada stok habis/harga berbeda jauh, mohon konfirmasi terlebih dahulu.`;
+    }
+
+    return text;
+  };
+
+  // Direct Send to WhatsApp
+  const handleSendWhatsApp = () => {
+    if (waTargetItems.length === 0) {
+      alert('Tidak ada barang belanjaan yang dipilih untuk dikirim.');
+      return;
+    }
+    const message = generateWhatsAppMessage();
+    openWhatsApp(waRecipientPhone, message);
+    setShowWhatsAppModal(false);
+  };
+
   // Copy shopping list to WhatsApp text format
-  const handleCopyWhatsAppList = () => {
+  const handleCopyWhatsAppText = () => {
+    if (waTargetItems.length === 0) {
+      alert('Tidak ada barang belanjaan yang dipilih.');
+      return;
+    }
+    const text = generateWhatsAppMessage();
+    navigator.clipboard.writeText(text);
+    setCopiedWa(true);
+    setTimeout(() => setCopiedWa(false), 2500);
+  };
+
+  // Quick 1-click WhatsApp copy from header
+  const handleQuickCopyWhatsAppList = () => {
     const activeItems = shoppingItems.filter(s => s.status !== 'PURCHASED');
     if (activeItems.length === 0) {
       alert('Tidak ada barang belanjaan yang berstatus pending/belum dibeli.');
@@ -221,7 +373,7 @@ export const ShoppingListManager: React.FC = () => {
     }
 
     let text = `🛒 *CATATAN BELANJA & BAHAN BAKU*\n`;
-    text += `*${storeSettings.storeName}*\n`;
+    text += `🏬 *${storeSettings.storeName}*\n`;
     text += `📅 Tanggal: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
     text += `----------------------------------------\n`;
 
@@ -233,7 +385,7 @@ export const ShoppingListManager: React.FC = () => {
       }
       const urgentTag = item.priority === 'URGENT' ? ' 🔴 *HABIS/URGENT!*' : item.priority === 'HIGH' ? ' 🟠 *Penting*' : '';
       const priceText = item.estimatedPrice > 0 ? ` (~${formatRupiah(item.estimatedPrice)})` : '';
-      const locText = item.supplierLocation ? ` [${item.supplierLocation}]` : '';
+      const locText = item.supplierLocation ? ` 📍 _[${item.supplierLocation}]_` : '';
       text += `[ ] ${idx + 1}. *${item.name}* - ${item.quantity} ${item.unit}${priceText}${urgentTag}${locText}\n`;
       if (item.notes) {
         text += `    _Ket: ${item.notes}_\n`;
@@ -247,6 +399,22 @@ export const ShoppingListManager: React.FC = () => {
     navigator.clipboard.writeText(text);
     setCopiedWa(true);
     setTimeout(() => setCopiedWa(false), 2500);
+  };
+
+  // Send single item to WhatsApp (e.g. quick order to supplier)
+  const handleSendSingleItemToWA = (item: ShoppingItem) => {
+    let msg = `Halo, saya mau pesan bahan berikut dari *${storeSettings.storeName}*:\n\n`;
+    msg += `📦 *${item.name}*\n`;
+    msg += `• Jumlah: *${item.quantity} ${item.unit}*\n`;
+    if (item.estimatedPrice > 0) {
+      msg += `• Estimasi Harga: ${formatRupiah(item.estimatedPrice)}\n`;
+    }
+    if (item.notes) {
+      msg += `• Catatan/Merek: _${item.notes}_\n`;
+    }
+    msg += `\nMohon info ketersediaan stok & total biayanya ya. Terima kasih! 🙏`;
+
+    openWhatsApp('', msg);
   };
 
   // Export to Excel
@@ -289,7 +457,7 @@ export const ShoppingListManager: React.FC = () => {
       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
+            <span className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold shadow-2xs">
               <ClipboardList size={22} />
             </span>
             <div>
@@ -302,7 +470,7 @@ export const ShoppingListManager: React.FC = () => {
                 )}
               </h1>
               <p className="text-xs text-slate-500">
-                Rencanakan belanja bahan baku warung, pantau estimasi anggaran, dan bukukan ke pengeluaran otomatis.
+                Rencanakan belanja bahan baku warung, kirim daftar ke WhatsApp karyawan/suplier, dan bukukan ke kas otomatis.
               </p>
             </div>
           </div>
@@ -323,14 +491,25 @@ export const ShoppingListManager: React.FC = () => {
               <span>{marketChecklistMode ? 'Mode Biasa' : 'Mode Belanja Pasar'}</span>
             </button>
 
+            {/* Main WhatsApp Button */}
+            <button
+              id="shopping-open-wa-modal-btn"
+              onClick={() => handleOpenWhatsAppModal()}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs group"
+              title="Buka panel kirim catatan belanja ke WhatsApp"
+            >
+              <MessageCircle size={16} className="group-hover:scale-110 transition-transform" />
+              <span>Kirim ke WhatsApp</span>
+            </button>
+
             <button
               id="shopping-copy-wa-btn"
-              onClick={handleCopyWhatsAppList}
-              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs"
-              title="Salin daftar belanja bahan yang belum dibeli ke WhatsApp"
+              onClick={handleQuickCopyWhatsAppList}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs"
+              title="Salin cepat teks catatan belanja ke clipboard"
             >
-              {copiedWa ? <Check size={15} /> : <Copy size={15} />}
-              <span>{copiedWa ? 'Tersalin!' : 'Kirim List ke WA'}</span>
+              {copiedWa ? <Check size={15} className="text-emerald-600" /> : <Copy size={15} />}
+              <span>{copiedWa ? 'Tersalin!' : 'Salin Teks'}</span>
             </button>
 
             <button
@@ -348,7 +527,7 @@ export const ShoppingListManager: React.FC = () => {
               className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs"
             >
               <Plus size={16} />
-              <span>+ Tambah Catatan Belanja</span>
+              <span>+ Tambah Belanja</span>
             </button>
           </div>
         </div>
@@ -506,10 +685,10 @@ export const ShoppingListManager: React.FC = () => {
       {marketChecklistMode ? (
         /* MARKET CHECKLIST MODE - Large touch-friendly cards for mobile market shopping */
         <div className="space-y-3">
-          <div className="bg-amber-500 text-white p-3 rounded-xl flex items-center justify-between text-xs font-bold">
+          <div className="bg-amber-500 text-white p-3 rounded-xl flex items-center justify-between text-xs font-bold shadow-2xs">
             <div className="flex items-center gap-2">
               <CheckSquare size={16} />
-              <span>Mode Belanja Pasar Aktif — Ketuk kotak/item untuk menandai barang sudah masuk keranjang belanja</span>
+              <span>Mode Belanja Pasar Aktif — Ketuk kotak/item untuk menandai barang sudah dibeli</span>
             </div>
             <span>{purchasedItems.length} / {shoppingItems.length} Selesai</span>
           </div>
@@ -564,17 +743,23 @@ export const ShoppingListManager: React.FC = () => {
                     </div>
                   </div>
 
-                  {!isPurchased && (
+                  <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenRecordExpense(item);
-                      }}
-                      className="px-2.5 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-[11px] font-bold hover:bg-blue-100 shrink-0"
+                      onClick={() => handleSendSingleItemToWA(item)}
+                      className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition"
+                      title="Kirim item ini ke WhatsApp"
                     >
-                      + Catat Kas
+                      <MessageCircle size={16} />
                     </button>
-                  )}
+                    {!isPurchased && (
+                      <button
+                        onClick={() => handleOpenRecordExpense(item)}
+                        className="px-2.5 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-[11px] font-bold hover:bg-blue-100"
+                      >
+                        + Catat Kas
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -594,13 +779,15 @@ export const ShoppingListManager: React.FC = () => {
                   Catat bahan baku, kemasan, atau kebutuhan warung yang perlu dibelanjakan agar operasional selalu siap dan terencana.
                 </p>
               </div>
-              <button
-                onClick={handleOpenAddModal}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center gap-1.5 transition"
-              >
-                <Plus size={15} />
-                <span>+ Buat Catatan Belanja Baru</span>
-              </button>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  onClick={handleOpenAddModal}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center gap-1.5 transition"
+                >
+                  <Plus size={15} />
+                  <span>+ Buat Catatan Belanja</span>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -619,7 +806,7 @@ export const ShoppingListManager: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredItems.map((item, index) => {
+                  {filteredItems.map((item) => {
                     const isPurchased = item.status === 'PURCHASED';
 
                     return (
@@ -728,7 +915,16 @@ export const ShoppingListManager: React.FC = () => {
 
                         {/* Actions */}
                         <td className="py-3 px-4 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
+                          <div className="flex items-center justify-center gap-1">
+                            {/* Send to WA button */}
+                            <button
+                              onClick={() => handleSendSingleItemToWA(item)}
+                              className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                              title="Kirim item ini ke WhatsApp"
+                            >
+                              <MessageCircle size={14} />
+                            </button>
+
                             {!item.isRecordedToExpense && (
                               <button
                                 onClick={() => handleOpenRecordExpense(item)}
@@ -766,7 +962,303 @@ export const ShoppingListManager: React.FC = () => {
         </div>
       )}
 
-      {/* 5. Modal Tambah / Edit Catatan Belanja */}
+      {/* 5. MODAL KIRIM KE WHATSAPP (Lengkap dengan Pilihan Penerima, Filter, & Preview) */}
+      {showWhatsAppModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 flex flex-col max-h-[92vh]">
+            
+            {/* Modal Header */}
+            <div className="p-4 bg-emerald-700 text-white flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2.5">
+                <span className="w-8 h-8 rounded-xl bg-emerald-600/60 flex items-center justify-center">
+                  <MessageCircle size={18} />
+                </span>
+                <div>
+                  <h3 className="font-bold text-sm">Kirim Catatan Belanja ke WhatsApp</h3>
+                  <p className="text-[11px] text-emerald-100">Kirim daftar belanja ke karyawan, kurir, suplier, atau grup warung</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowWhatsAppModal(false)}
+                className="text-emerald-200 hover:text-white p-1.5 rounded-xl hover:bg-emerald-800 transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1">
+              
+              {/* Target Penerima */}
+              <div className="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <User size={14} className="text-emerald-600" />
+                    <span>Nomor WhatsApp Tujuan (Opsional)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handlePickContact}
+                    disabled={isPickingContact}
+                    className="text-[11px] font-bold text-emerald-700 bg-emerald-100/70 hover:bg-emerald-200/80 px-2.5 py-1 rounded-lg flex items-center gap-1 transition"
+                  >
+                    <Smartphone size={13} />
+                    <span>{isPickingContact ? 'Membuka Kontak...' : 'Cari Kontak HP'}</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <input
+                      type="tel"
+                      placeholder="Nomor WhatsApp (cth: 08123456789)"
+                      value={waRecipientPhone}
+                      onChange={e => setWaRecipientPhone(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-medium text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Nama Penerima (cth: Budi / Toko Sembako)"
+                      value={waRecipientName}
+                      onChange={e => setWaRecipientName(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick User Presets */}
+                <div className="pt-1">
+                  <div className="text-[10px] font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
+                    <Users size={12} />
+                    <span>Pintasan Cepat Nomor Pengguna:</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {users.map(u => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => {
+                          setWaRecipientPhone(u.phone || '082178867116');
+                          setWaRecipientName(u.name);
+                        }}
+                        className="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 text-slate-700 hover:text-emerald-700 rounded-lg text-[11px] font-semibold transition flex items-center gap-1 shadow-2xs"
+                      >
+                        <span>{u.name} ({u.role})</span>
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWaRecipientPhone('');
+                        setWaRecipientName('');
+                      }}
+                      className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-[11px] font-semibold transition"
+                    >
+                      Buka WA Umum
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter Cakupan Data Belanja */}
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Filter size={14} className="text-blue-600" />
+                  <span>Pilih Data yang Akan Dikirim</span>
+                </label>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setWaScopeFilter('PENDING')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition text-center ${
+                      waScopeFilter === 'PENDING'
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-2xs'
+                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-white'
+                    }`}
+                  >
+                    📦 Belum Dibeli ({pendingItems.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setWaScopeFilter('URGENT')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition text-center ${
+                      waScopeFilter === 'URGENT'
+                        ? 'bg-red-600 text-white border-red-600 shadow-2xs'
+                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-white'
+                    }`}
+                  >
+                    🔴 Khusus Habis ({urgentCount})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setWaScopeFilter('ALL')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition text-center ${
+                      waScopeFilter === 'ALL'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-white'
+                    }`}
+                  >
+                    📑 Semua Item ({shoppingItems.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setWaScopeFilter('CUSTOM')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition text-center ${
+                      waScopeFilter === 'CUSTOM'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-white'
+                    }`}
+                  >
+                    ☑️ Pilih Manual ({waSelectedItemIds.length})
+                  </button>
+                </div>
+
+                {/* Filter Kategori */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-600 font-semibold shrink-0">Kategori:</span>
+                  <select
+                    value={waSelectedCategory}
+                    onChange={e => setWaSelectedCategory(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-800"
+                  >
+                    {SHOPPING_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Manual Item Checkbox list if CUSTOM */}
+                {waScopeFilter === 'CUSTOM' && (
+                  <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-slate-50 space-y-1">
+                    {shoppingItems.map(item => {
+                      const isChecked = waSelectedItemIds.includes(item.id);
+                      return (
+                        <label
+                          key={item.id}
+                          className="flex items-center gap-2 p-1.5 hover:bg-white rounded-lg cursor-pointer text-xs"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              if (isChecked) {
+                                setWaSelectedItemIds(waSelectedItemIds.filter(id => id !== item.id));
+                              } else {
+                                setWaSelectedItemIds([...waSelectedItemIds, item.id]);
+                              }
+                            }}
+                            className="rounded text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className="font-bold text-slate-800">{item.name}</span>
+                          <span className="text-slate-500 font-medium">({item.quantity} {item.unit})</span>
+                          {item.estimatedPrice > 0 && (
+                            <span className="text-slate-400 ml-auto font-mono text-[11px]">{formatRupiah(item.estimatedPrice)}</span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Pengaturan Detail Pesan */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+                <span className="text-[11px] font-bold text-slate-700 block">Opsi Informasi Tambahan:</span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-700">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={waIncludePrice}
+                      onChange={e => setWaIncludePrice(e.target.checked)}
+                      className="rounded text-emerald-600"
+                    />
+                    <span>Estimasi Harga</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={waIncludeLocation}
+                      onChange={e => setWaIncludeLocation(e.target.checked)}
+                      className="rounded text-emerald-600"
+                    />
+                    <span>Tempat/Toko</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={waIncludeNotes}
+                      onChange={e => setWaIncludeNotes(e.target.checked)}
+                      className="rounded text-emerald-600"
+                    />
+                    <span>Catatan/Merek</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={waIncludeReceiptReminder}
+                      onChange={e => setWaIncludeReceiptReminder(e.target.checked)}
+                      className="rounded text-emerald-600"
+                    />
+                    <span>Pesan Struk Nota</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Pratinjau Teks WhatsApp (Live Preview) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-slate-800">Pratinjau Pesan WhatsApp:</span>
+                  <span className="text-[11px] text-emerald-700 font-semibold">{waTargetItems.length} item dipilih</span>
+                </div>
+                <div className="bg-emerald-950/90 text-emerald-100 p-3.5 rounded-2xl font-mono text-xs whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto border border-emerald-800 shadow-inner select-all">
+                  {generateWhatsAppMessage()}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+              <div className="text-xs text-slate-500">
+                {waRecipientPhone ? (
+                  <span>Tujuan: <strong className="text-slate-800 font-mono">{waRecipientPhone}</strong> {waRecipientName ? `(${waRecipientName})` : ''}</span>
+                ) : (
+                  <span>Mode: <strong>Buka WhatsApp Web / App Langsung</strong></span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={handleCopyWhatsAppText}
+                  className="px-3.5 py-2 border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs"
+                >
+                  {copiedWa ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                  <span>{copiedWa ? 'Tersalin!' : 'Salin Teks'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSendWhatsApp}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition"
+                >
+                  <Send size={15} />
+                  <span>Kirim ke WhatsApp</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 6. Modal Tambah / Edit Catatan Belanja */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200">
@@ -932,7 +1424,7 @@ export const ShoppingListManager: React.FC = () => {
         </div>
       )}
 
-      {/* 6. Modal Catat ke Pengeluaran / Buku Kas Otomatis */}
+      {/* 7. Modal Catat ke Pengeluaran / Buku Kas Otomatis */}
       {expenseItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200">
@@ -1025,3 +1517,4 @@ export const ShoppingListManager: React.FC = () => {
     </div>
   );
 };
+

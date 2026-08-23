@@ -319,6 +319,15 @@ export async function saveTransactionToFirestore(transaction: Transaction): Prom
   }
 }
 
+export async function deleteTransactionFromFirestore(transactionId: string): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.TRANSACTIONS, transactionId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.error('Error deleting transaction from Firestore:', err);
+  }
+}
+
 export async function saveExpenseToFirestore(expense: Expense): Promise<void> {
   try {
     const docRef = doc(db, COLLECTIONS.EXPENSES, expense.id);
