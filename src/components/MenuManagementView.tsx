@@ -1,9 +1,8 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useWarung } from '../context/WarungContext';
 import { Product, ProductCategory, ProductVariant } from '../types';
 import { formatRupiah } from '../utils/format';
 import { exportProductsToExcel } from '../utils/exportData';
-import { processMenuImage, formatBytes, MAX_IMAGE_SIZE_BYTES } from '../utils/imageCompressor';
 import {
   Plus,
   Search,
@@ -11,14 +10,9 @@ import {
   Edit2,
   Trash2,
   Layers,
-  CheckCircle2,
   X,
   Package,
   Sparkles,
-  AlertTriangle,
-  Image as ImageIcon,
-  Upload,
-  Camera,
   Check,
   Archive,
   ArchiveRestore,
@@ -58,14 +52,8 @@ export const MenuManagementView: React.FC = () => {
   const [stock, setStock] = useState<number | ''>(50);
   const [unit, setUnit] = useState('porsi');
   const [emoji, setEmoji] = useState('🍽️');
-  const [imageUrl, setImageUrl] = useState('');
-  const [imageSizeFormatted, setImageSizeFormatted] = useState('');
-  const [imageLoading, setImageLoading] = useState(false);
-  const [imageError, setImageError] = useState<string | null>(null);
   const [isAvailable, setIsAvailable] = useState(true);
   const [isArchived, setIsArchived] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Dynamic Variants Builder
   const [variants, setVariants] = useState<ProductVariant[]>([]);
@@ -103,9 +91,6 @@ export const MenuManagementView: React.FC = () => {
     setStock(50);
     setUnit('porsi');
     setEmoji('🍽️');
-    setImageUrl('');
-    setImageSizeFormatted('');
-    setImageError(null);
     setIsAvailable(true);
     setIsArchived(false);
     setVariants([]);
@@ -121,44 +106,10 @@ export const MenuManagementView: React.FC = () => {
     setStock(p.stock);
     setUnit(p.unit);
     setEmoji(p.emoji || '🍽️');
-    setImageUrl(p.imageUrl || '');
-    setImageSizeFormatted(p.imageUrl ? 'Tersimpan' : '');
-    setImageError(null);
     setIsAvailable(p.isAvailable);
     setIsArchived(!!p.isArchived);
     setVariants(p.variants || []);
     setShowModal(true);
-  };
-
-  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setImageLoading(true);
-    setImageError(null);
-
-    try {
-      const result = await processMenuImage(file);
-      if (result.success && result.dataUrl) {
-        setImageUrl(result.dataUrl);
-        setImageSizeFormatted(result.sizeFormatted || 'Siap');
-      } else {
-        setImageError(result.errorMessage || 'Gagal memproses gambar foto menu.');
-      }
-    } catch (err: any) {
-      setImageError('Terjadi kesalahan saat mengunggah foto.');
-    } finally {
-      setImageLoading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
-  const handleRemoveImage = () => {
-    setImageUrl('');
-    setImageSizeFormatted('');
-    setImageError(null);
   };
 
   const handleAddVariant = () => {
@@ -191,7 +142,6 @@ export const MenuManagementView: React.FC = () => {
       stock: Number(stock) || 0,
       unit,
       emoji: emoji || '🍽️',
-      imageUrl: imageUrl.trim() || undefined,
       isAvailable: isArchived ? false : isAvailable,
       isArchived,
       variants,
@@ -342,7 +292,6 @@ export const MenuManagementView: React.FC = () => {
         {filteredProducts.map(product => {
           const estimatedMargin = product.basePrice - product.baseCost;
           const marginPercent = product.basePrice > 0 ? (estimatedMargin / product.basePrice) * 100 : 0;
-          const hasImage = !!product.imageUrl;
           const isArchived = !!product.isArchived;
 
           return (
@@ -357,23 +306,12 @@ export const MenuManagementView: React.FC = () => {
               }`}
             >
               <div>
-                {/* Top badges & Image/Emoji Banner */}
+                {/* Top badges & Emoji Banner */}
                 <div className="flex items-start justify-between gap-3 mb-2.5">
                   <div className="flex items-center gap-3">
-                    {hasImage ? (
-                      <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
-                        <img
-                          src={product.imageUrl}
-                          alt={product.name}
-                          referrerPolicy="no-referrer"
-                          className={`w-full h-full object-cover ${isArchived ? 'grayscale-50' : ''}`}
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-2xl shrink-0">
-                        {product.emoji || '🍽️'}
-                      </div>
-                    )}
+                    <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-2xl shrink-0">
+                      {product.emoji || '🍽️'}
+                    </div>
                     <div>
                       <h4 className={`font-bold text-sm leading-snug ${isArchived ? 'text-slate-600 line-through' : 'text-slate-900'}`}>
                         {product.name}
@@ -546,7 +484,7 @@ export const MenuManagementView: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden border border-slate-200 max-h-[90vh] flex flex-col">
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
               <h3 className="font-bold text-sm">
-                {editingId ? 'Edit Menu & Foto Produk' : 'Tambah Menu / Produk Baru'}
+                {editingId ? 'Edit Menu & Produk' : 'Tambah Menu / Produk Baru'}
               </h3>
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white">
                 <X size={18} />
@@ -554,108 +492,6 @@ export const MenuManagementView: React.FC = () => {
             </div>
 
             <form onSubmit={handleFormSubmit} className="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
-              
-              {/* Photo Upload Section (Max 1MB) */}
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label className="font-semibold text-slate-800 flex items-center gap-1.5">
-                    <ImageIcon size={14} className="text-blue-600" />
-                    <span>Foto Menu / Produk (Maksimal 1 MB)</span>
-                  </label>
-                  <span className="text-[10px] text-slate-500 font-medium">
-                    Maks 1 MB • Otomatis Dioptimasi
-                  </span>
-                </div>
-
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="image/*"
-                  onChange={handleImageFileChange}
-                  className="hidden"
-                  id="menu-photo-file-input"
-                />
-
-                <div className="flex items-center gap-3">
-                  {/* Photo Preview Thumbnail */}
-                  <div className="relative w-20 h-20 rounded-xl bg-white border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden shrink-0 group">
-                    {imageUrl ? (
-                      <>
-                        <img
-                          src={imageUrl}
-                          alt="Preview Foto Menu"
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleRemoveImage}
-                          className="absolute inset-0 bg-red-900/70 text-white opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition text-[10px] font-bold"
-                          title="Hapus Foto"
-                        >
-                          <Trash2 size={14} />
-                          <span>Hapus</span>
-                        </button>
-                      </>
-                    ) : (
-                      <div className="text-center p-1">
-                        <ImageIcon size={20} className="text-slate-400 mx-auto" />
-                        <span className="text-[9px] text-slate-400 block mt-0.5">Belum Ada</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Upload Controls & Status */}
-                  <div className="flex-1 space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={imageLoading}
-                        className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl font-semibold text-slate-700 flex items-center gap-1.5 shadow-2xs transition"
-                      >
-                        <Upload size={13} className="text-blue-600" />
-                        <span>{imageUrl ? 'Ganti Foto' : 'Pilih Foto / Kamera'}</span>
-                      </button>
-
-                      {imageUrl && (
-                        <button
-                          type="button"
-                          onClick={handleRemoveImage}
-                          className="px-2.5 py-1.5 text-red-600 hover:bg-red-50 rounded-xl text-xs font-semibold transition"
-                        >
-                          Hapus
-                        </button>
-                      )}
-                    </div>
-
-                    {imageLoading && (
-                      <p className="text-[11px] text-blue-600 animate-pulse font-medium">
-                        Memproses dan mengoptimasi foto (Maks 1MB)...
-                      </p>
-                    )}
-
-                    {imageUrl && !imageLoading && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-emerald-700 font-semibold">
-                        <CheckCircle2 size={12} />
-                        <span>Foto siap digunakan ({imageSizeFormatted})</span>
-                      </div>
-                    )}
-
-                    {imageError && (
-                      <div className="flex items-center gap-1 text-[11px] text-red-600 font-medium">
-                        <AlertTriangle size={12} />
-                        <span>{imageError}</span>
-                      </div>
-                    )}
-
-                    <p className="text-[10px] text-slate-400">
-                      * Mendukung kamera HP, format JPG, PNG, WEBP.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
               {/* Product Basic Info */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">

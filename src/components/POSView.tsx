@@ -6,6 +6,7 @@ import { ReceiptModal } from './ReceiptModal';
 import { CashCalculatorModal } from './CashCalculatorModal';
 import { ItemDiscountModal } from './ItemDiscountModal';
 import { RetroactiveSaleModal } from './RetroactiveSaleModal';
+import { HannaBeeLogo } from './HannaBeeLogo';
 import { calculateSmartCashSuggestions } from '../utils/cashSuggestions';
 import { pickContactFromPhone, isContactPickerSupported } from '../utils/contactPicker';
 import confetti from 'canvas-confetti';
@@ -65,6 +66,7 @@ export const POSView: React.FC = () => {
     discountAmount,
     cartNotes,
     storeSettings,
+    currentUser,
     addToCart,
     updateCartItemQuantity,
     setCartItemQuantity,
@@ -86,6 +88,12 @@ export const POSView: React.FC = () => {
   // Search & Filter
   const [selectedCategory, setSelectedCategory] = useState<'Semua' | ProductCategory>('Semua');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Today active transactions count for dashboard badge
+  const todayTransactionsCount = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    return transactions.filter(t => t.timestamp.startsWith(todayStr) && t.status !== 'BATAL').length;
+  }, [transactions]);
 
   // Variant Modal State
   const [variantModalProduct, setVariantModalProduct] = useState<Product | null>(null);
@@ -267,6 +275,59 @@ export const POSView: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-5 space-y-4">
+      {/* Official HannaBee Brand Banner on Cashier Dashboard */}
+      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950/40 rounded-3xl p-4 sm:p-5 text-white border border-slate-800/80 shadow-md relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4">
+        {/* Glow decoration */}
+        <div className="absolute -top-16 -right-16 w-52 h-52 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-16 -left-16 w-52 h-52 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex items-center gap-3.5 sm:gap-4 relative z-10 w-full md:w-auto">
+          <div className="shrink-0 p-1 bg-gradient-to-br from-amber-400/30 to-amber-600/10 rounded-2xl border border-amber-400/30 shadow-inner">
+            <HannaBeeLogo size="md" variant="badge" />
+          </div>
+          <div className="space-y-0.5 sm:space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg sm:text-xl font-black text-amber-400 tracking-tight flex items-center gap-1.5">
+                <span>{storeSettings.storeName || 'HannaBee'}</span>
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-2 py-0.5 rounded-md border border-amber-400/30">
+                  KASIR POS
+                </span>
+              </h2>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 inline-flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Kasir Online
+              </span>
+            </div>
+            <p className="text-xs text-amber-200/90 font-medium italic">
+              {storeSettings.tagline || 'Jajanan Wareg Seger'}
+            </p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-300 pt-0.5">
+              <span className="flex items-center gap-1 font-medium">
+                <Phone size={11} className="text-amber-400" />
+                <span>Pemesanan / WA: <strong className="text-white font-mono">{storeSettings.phone || '0821 7886 7116'}</strong></span>
+              </span>
+              <span className="text-slate-600 hidden sm:inline">•</span>
+              <span className="text-slate-300">
+                Petugas: <strong className="text-amber-300">{currentUser?.name || storeSettings.cashierName || 'Kasir'}</strong>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Stats Pill */}
+        <div className="flex items-center gap-2 sm:gap-4 w-full md:w-auto justify-between md:justify-end shrink-0 relative z-10 bg-slate-800/80 backdrop-blur-xs px-3.5 py-2 sm:py-2.5 rounded-2xl border border-slate-700/80">
+          <div className="text-left sm:text-right px-1">
+            <p className="text-[10px] text-slate-400 font-medium">Total Menu</p>
+            <p className="text-xs sm:text-sm font-bold text-amber-400">{products.filter(p => !p.isArchived).length} Item</p>
+          </div>
+          <div className="w-px h-6 bg-slate-700" />
+          <div className="text-left sm:text-right px-1">
+            <p className="text-[10px] text-slate-400 font-medium">Penjualan Hari Ini</p>
+            <p className="text-xs sm:text-sm font-bold text-emerald-400">{todayTransactionsCount} Transaksi</p>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         
         {/* LEFT COLUMN: Products catalog & Category navigation */}
@@ -332,54 +393,53 @@ export const POSView: React.FC = () => {
             {filteredProducts.map(product => {
               const hasVariants = product.variants && product.variants.length > 0;
               const isLowStock = product.stock <= 5;
-              const hasImage = !!product.imageUrl;
 
               return (
                 <button
                   key={product.id}
                   id={`product-card-${product.id}`}
                   onClick={() => handleProductClick(product)}
-                  className="bg-white p-3 rounded-2xl border border-slate-200 hover:border-emerald-500 hover:shadow-md transition-all text-left flex flex-col justify-between group relative overflow-hidden active:scale-95"
+                  className="bg-white p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-500 hover:shadow-md transition-all text-left flex flex-col justify-between group relative overflow-hidden active:scale-95"
                 >
                   {hasVariants && (
-                    <span className="absolute top-2 right-2 z-10 bg-emerald-600/90 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5 shadow-2xs">
+                    <span className="absolute top-2.5 right-2.5 z-10 bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5 shadow-2xs">
                       <Layers size={10} />
                       {product.variants.length} Varian
                     </span>
                   )}
                   
                   <div>
-                    {hasImage ? (
-                      <div className="w-full h-28 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 mb-2 group-hover:scale-[1.02] transition-transform">
-                        <img
-                          src={product.imageUrl}
-                          alt={product.name}
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-full h-20 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-3xl mb-2 group-hover:scale-105 transition-transform">
+                    <div className="flex items-center gap-3 mb-2.5">
+                      <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200/70 flex items-center justify-center text-2xl shrink-0 group-hover:scale-105 group-hover:bg-amber-100/80 transition-transform">
                         {product.emoji || '🍽️'}
                       </div>
-                    )}
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] text-slate-400 font-medium block truncate">
+                          {product.category}
+                        </span>
+                        <span className={`inline-block text-[10px] px-1.5 py-0.2 rounded-md font-semibold mt-0.5 ${
+                          isLowStock 
+                            ? 'bg-amber-100 text-amber-800' 
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          Stok: {product.stock} {product.unit}
+                        </span>
+                      </div>
+                    </div>
 
-                    <h4 className="font-semibold text-xs text-slate-900 line-clamp-2 leading-snug">
+                    <h4 className="font-bold text-xs sm:text-sm text-slate-900 line-clamp-2 leading-snug">
                       {product.name}
                     </h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Stok: <span className={isLowStock ? 'text-amber-600 font-bold' : 'text-slate-600'}>{product.stock} {product.unit}</span>
-                    </p>
                   </div>
 
-                  <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
                     <div>
-                      <span className="font-bold text-xs text-emerald-700 font-mono">
+                      <span className="font-bold text-xs sm:text-sm text-emerald-700 font-mono">
                         {formatRupiah(product.basePrice)}
                       </span>
                     </div>
-                    <div className="w-6 h-6 rounded-lg bg-emerald-50 group-hover:bg-emerald-600 text-emerald-600 group-hover:text-white flex items-center justify-center transition">
-                      <Plus size={14} />
+                    <div className="w-7 h-7 rounded-xl bg-emerald-50 group-hover:bg-emerald-600 text-emerald-600 group-hover:text-white flex items-center justify-center transition shadow-2xs">
+                      <Plus size={15} />
                     </div>
                   </div>
                 </button>
@@ -401,14 +461,17 @@ export const POSView: React.FC = () => {
             {/* Cart Header & Customer selector */}
             <div className="p-4 border-b border-slate-200 bg-slate-50/70">
               <div className="flex items-center justify-between mb-2.5">
-                <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                  <span>Keranjang Kasir</span>
-                  {cart.length > 0 && (
-                    <span className="bg-emerald-600 text-white text-xs px-2 py-0.2 rounded-full font-bold">
-                      {cart.reduce((s, i) => s + i.quantity, 0)} item
-                    </span>
-                  )}
-                </h3>
+                <div className="flex items-center gap-2">
+                  <HannaBeeLogo size="xs" variant="badge" className="shrink-0" />
+                  <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                    <span>Pesanan Kasir</span>
+                    {cart.length > 0 && (
+                      <span className="bg-emerald-600 text-white text-xs px-2 py-0.2 rounded-full font-bold">
+                        {cart.reduce((s, i) => s + i.quantity, 0)} item
+                      </span>
+                    )}
+                  </h3>
+                </div>
                 {cart.length > 0 && (
                   <button
                     id="clear-cart-btn"

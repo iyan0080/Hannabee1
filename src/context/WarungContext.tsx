@@ -312,7 +312,11 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // Master Data state
   const [products, setProducts] = useState<Product[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    const parsed: Product[] = saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    return parsed.map(p => {
+      const { imageUrl, ...clean } = p as any;
+      return clean as Product;
+    });
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
@@ -537,7 +541,11 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   useEffect(() => {
     // 1. Subscribe to Products
     const unsubProducts = subscribeToProducts(cloudProducts => {
-      setProducts(cloudProducts);
+      const cleaned = cloudProducts.map(p => {
+        const { imageUrl, ...rest } = p as any;
+        return rest as Product;
+      });
+      setProducts(cleaned);
       setSyncState(prev => ({ ...prev, status: 'synced', lastSyncedAt: new Date().toISOString() }));
     });
 

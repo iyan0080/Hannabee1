@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Transaction, StoreSettings } from '../types';
 import { formatRupiah, formatDate, generateReceiptWhatsAppText, openWhatsApp, cleanPhoneNumber } from '../utils/format';
+import { HannaBeeLogo } from './HannaBeeLogo';
 import { Printer, MessageCircle, X, Check, Copy, Share2 } from 'lucide-react';
 
 interface ReceiptModalProps {
@@ -95,6 +96,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           >
             {/* Header Store Info */}
             <div className="text-center pb-3 border-b border-dashed border-slate-400">
+              <div className="flex justify-center mb-1.5">
+                <HannaBeeLogo size="xs" variant="badge" />
+              </div>
               <h2 className="font-bold text-sm text-slate-900 uppercase tracking-tight">
                 {storeSettings.storeName}
               </h2>

@@ -3,6 +3,7 @@ import { useWarung } from '../context/WarungContext';
 import { StoreSettings } from '../types';
 import { formatDate } from '../utils/format';
 import { BackupRestoreSection } from './BackupRestoreSection';
+import { HannaBeeLogo } from './HannaBeeLogo';
 import {
   Settings,
   Store,
@@ -125,10 +126,30 @@ export const SettingsView: React.FC = () => {
         
         {/* 1. Profil Warung */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-          <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
-            <Store size={18} className="text-blue-600" />
-            <span>Identitas & Kontak Warung</span>
-          </h3>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+              <Store size={18} className="text-blue-600" />
+              <span>Identitas & Kontak Warung</span>
+            </h3>
+            <span className="text-[11px] text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full font-bold border border-amber-200">
+              Logo Resmi Aktif
+            </span>
+          </div>
+
+          {/* Logo & Brand Display Preview */}
+          <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-white flex flex-col sm:flex-row items-center gap-4">
+            <HannaBeeLogo size="lg" variant="badge" />
+            <div className="text-center sm:text-left space-y-1">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                <span className="font-black text-amber-400 text-base">{formData.storeName || 'HannaBee'}</span>
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-2 py-0.5 rounded-md border border-amber-400/30">
+                  Logo Aplikasi
+                </span>
+              </div>
+              <p className="text-xs text-amber-200/90 italic font-medium">{formData.tagline || 'Jajanan Wareg Seger'}</p>
+              <p className="text-[11px] text-slate-400">Logo ini otomatis terpasang pada favicon aplikasi, sidebar navigasi, struk cetak kasir, dan dasbor kasir POS.</p>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div>
