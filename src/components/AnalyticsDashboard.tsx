@@ -20,11 +20,8 @@ import {
   ShoppingBag,
   AlertCircle,
   Clock,
-  Sparkles,
   Award,
   CreditCard,
-  Send,
-  RefreshCw,
   Calendar,
   Filter,
   CalendarRange,
@@ -51,11 +48,6 @@ export const AnalyticsDashboard: React.FC = () => {
 
   const [customStartDate, setCustomStartDate] = useState<string>(get7DaysAgoISO());
   const [customEndDate, setCustomEndDate] = useState<string>(getTodayISO());
-
-  // AI Advisor State
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiInsight, setAiInsight] = useState<string | null>(null);
-  const [aiCustomPrompt, setAiCustomPrompt] = useState('');
 
   // 1. Calculate Active Date Range Bounds based on Period Type
   const { startDate, endDate, periodLabel } = useMemo(() => {
@@ -250,42 +242,6 @@ export const AnalyticsDashboard: React.FC = () => {
       count,
     }));
   }, [periodTransactions]);
-
-  // AI Business Consultant request
-  const handleFetchAiInsight = async (customPrompt?: string) => {
-    setAiLoading(true);
-    try {
-      const summaryContext = {
-        storeName: storeSettings.storeName,
-        periodLabel,
-        sales: periodSales,
-        netProfit: periodNetProfit,
-        transactionsCount: periodTransactionCount,
-        averageBasket: averageBasketValue,
-        totalActiveKasbon: totalActiveDebt,
-        topSellingItems: topProducts.map(p => `${p.name} (${p.quantity} terjual)`),
-      };
-
-      const res = await fetch('/api/ai/advisor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'analysis',
-          summary: summaryContext,
-          prompt: customPrompt || aiCustomPrompt || `Berikan 3 strategi taktis untuk mendongkrak omzet dan menekan biaya untuk ${periodLabel} warung kami.`,
-        }),
-      });
-
-      const json = await res.json();
-      if (json.content) {
-        setAiInsight(json.content);
-      }
-    } catch (err) {
-      setAiInsight(`💡 *Tips Analitik Bisnis Warung (${periodLabel})*:\n1. Omzet penjualan tercatat ${formatRupiah(periodSales)} dengan Laba Bersih ${formatRupiah(periodNetProfit)}.\n2. Pastikan stok untuk menu terlaris selalu aman.\n3. Pertahankan efisiensi operasional dan pantau kasbon yang belum terlunasi.`);
-    } finally {
-      setAiLoading(false);
-    }
-  };
 
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-5 space-y-5">
@@ -636,49 +592,6 @@ export const AnalyticsDashboard: React.FC = () => {
           </div>
         </div>
 
-      </div>
-
-      {/* 4. AI Warung Advisor Assistant (Gemini Powered) */}
-      <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-md border border-slate-700">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
-              <Sparkles size={20} />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-white flex items-center gap-2">
-                <span>Asisten Konsultan Bisnis Warung (AI)</span>
-                <span className="bg-emerald-500/30 text-emerald-300 text-[10px] px-2 py-0.2 rounded-full font-medium">
-                  Gemini Powered
-                </span>
-              </h3>
-              <p className="text-xs text-slate-400">
-                Analisis cerdas data performa warung untuk <b>{periodLabel}</b>.
-              </p>
-            </div>
-          </div>
-
-          <button
-            id="generate-ai-insight-btn"
-            onClick={() => handleFetchAiInsight()}
-            disabled={aiLoading}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-xs transition disabled:opacity-50"
-          >
-            {aiLoading ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            <span>{aiLoading ? 'Menganalisis...' : 'Analisis Performa Periode Ini'}</span>
-          </button>
-        </div>
-
-        {/* AI Insight Box */}
-        {aiInsight ? (
-          <div className="bg-slate-800/90 border border-slate-700 rounded-xl p-4 text-xs text-slate-200 whitespace-pre-line leading-relaxed">
-            {aiInsight}
-          </div>
-        ) : (
-          <div className="bg-slate-800/50 border border-dashed border-slate-700 rounded-xl p-4 text-xs text-slate-400 text-center">
-            Klik tombol <b>"Analisis Performa Periode Ini"</b> untuk mendapatkan wawasan cerdas seputar omzet, margin keuntungan, dan strategi peningkatan penjualan pada rentang tanggal yang dipilih.
-          </div>
-        )}
       </div>
 
     </div>

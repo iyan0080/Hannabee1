@@ -30,6 +30,7 @@ export const SettingsView: React.FC = () => {
     syncState,
     syncWithCloud,
     clearAllDatabase,
+    clearSalesAndCashData,
     currentUser,
     users,
     triggerManualBackup,
@@ -417,27 +418,45 @@ export const SettingsView: React.FC = () => {
             Pembersihan & Reset Database
           </h3>
           <p className="text-xs text-slate-500 mt-1">
-            Kosongkan seluruh data demo, riwayat transaksi, dan catatan pembukuan untuk memulai operasional warung dari awal yang bersih.
+            Kelola pembersihan data transaksi kasir, buku kas, atau reset total sistem secara aman dan tersinkronisasi langsung ke Cloud.
           </p>
         </div>
 
-        <div className="pt-1">
+        <div className="pt-1 flex flex-col sm:flex-row gap-3">
+          <button
+            id="reset-sales-cash-btn"
+            onClick={() => {
+              if (
+                confirm(
+                  '⚠️ KONFIRMASI PEMBERSIHAN KAS & PENJUALAN:\n\nApakah Anda yakin ingin menghapus seluruh riwayat transaksi penjualan kasir, beban pengeluaran, mutasi kas manual, dan rekonsiliasi tutup kas?\n\nCATATAN AMAN: Katalog produk/menu makanan/minuman dan daftar pelanggan Anda TETAP UTUH dan aman.'
+                )
+              ) {
+                clearSalesAndCashData();
+                alert('Berhasil! Seluruh data transaksi penjualan kasir, beban pengeluaran, dan buku kas telah dibersihkan baik dari memori perangkat maupun Cloud Firestore. Data menu & pelanggan tetap aman tersimpan.');
+              }
+            }}
+            className="w-full sm:w-auto px-5 py-3 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl flex items-center justify-center gap-2.5 font-bold text-xs transition"
+          >
+            <Trash2 size={16} className="text-amber-700" />
+            <span>Hapus Semua Data Kas & Penjualan (Menu Tetap Aman)</span>
+          </button>
+
           <button
             id="reset-sample-data-btn"
             onClick={() => {
               if (
                 confirm(
-                  'Apakah Anda yakin ingin menghapus semua database demo dan mengosongkan seluruh data transaksi, produk, kasbon, dan pengeluaran?\n\nTindakan ini akan membuat database warung Anda bersih dan siap untuk operasional nyata.'
+                  '⚠️ PERINGATAN RESET TOTAL:\n\nApakah Anda yakin ingin mengosongkan SELURUH database (termasuk produk, transaksi, kas, dan pelanggan)?\n\nTindakan ini tidak dapat dibatalkan.'
                 )
               ) {
                 clearAllDatabase();
-                alert('Semua data demo telah berhasil dihapus. Database warung Anda sekarang bersih dan siap digunakan!');
+                alert('Semua data database telah berhasil dikosongkan. Database warung Anda sekarang bersih dan siap digunakan!');
               }
             }}
             className="w-full sm:w-auto px-5 py-3 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl flex items-center justify-center gap-2.5 font-bold text-xs transition"
           >
             <Trash2 size={16} className="text-red-600" />
-            <span>Kosongkan Semua Data & Mulai Baru</span>
+            <span>Reset Total Semua Data</span>
           </button>
         </div>
       </div>

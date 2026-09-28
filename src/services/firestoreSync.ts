@@ -471,6 +471,48 @@ export async function clearAllFirestoreDocuments(): Promise<void> {
   }
 }
 
+// Clear only Sales and Cash documents in cloud Firestore
+export async function clearSalesAndCashFirestoreDocuments(): Promise<void> {
+  try {
+    const collectionsToClear = [
+      COLLECTIONS.TRANSACTIONS,
+      COLLECTIONS.EXPENSES,
+      COLLECTIONS.MANUAL_JOURNALS,
+      COLLECTIONS.CASH_CLOSINGS,
+    ];
+
+    for (const colName of collectionsToClear) {
+      const snap = await getDocs(collection(db, colName));
+      if (snap.size > 0) {
+        const batch = writeBatch(db);
+        snap.forEach(docSnap => {
+          batch.delete(docSnap.ref);
+        });
+        await batch.commit();
+      }
+    }
+
+    // Reset customer sales & debt counters in Firestore
+    const custSnap = await getDocs(collection(db, COLLECTIONS.CUSTOMERS));
+    if (custSnap.size > 0) {
+      const batch = writeBatch(db);
+      custSnap.forEach(docSnap => {
+        batch.update(docSnap.ref, {
+          totalTransactions: 0,
+          totalSpent: 0,
+          totalDebt: 0,
+          depositBalance: 0,
+          depositHistory: [],
+        });
+      });
+      await batch.commit();
+    }
+  } catch (err) {
+    console.error('Error clearing sales and cash Firestore documents:', err);
+  }
+}
+
+
 // Batch Sync all local state to Firestore
 export async function pushFullDatabaseToFirestore(data: {
   products: Product[];

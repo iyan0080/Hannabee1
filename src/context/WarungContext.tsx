@@ -78,6 +78,7 @@ import {
   saveShoppingItemToFirestore,
   deleteShoppingItemFromFirestore,
   clearAllFirestoreDocuments,
+  clearSalesAndCashFirestoreDocuments,
   pushFullDatabaseToFirestore,
 } from '../services/firestoreSync';
 
@@ -216,6 +217,7 @@ interface WarungContextType {
   updateStoreSettings: (settings: Partial<StoreSettings>) => void;
   syncWithCloud: () => Promise<boolean>;
   clearAllDatabase: () => void;
+  clearSalesAndCashData: () => void;
 
   // Financial Calculations
   calculateProfitLoss: (startDate: Date, endDate: Date, periodLabel: string) => ProfitLossSummary;
@@ -2786,6 +2788,40 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     clearAllFirestoreDocuments();
   }, []);
 
+  // Clear only sales and cash data (penjualan kasir, beban pengeluaran, mutasi kas manual, tutup kas)
+  // Data master produk/menu dan daftar pelanggan tetap utuh
+  const clearSalesAndCashData = useCallback(() => {
+    setTransactions([]);
+    setExpenses([]);
+    setManualJournals([]);
+    setCashClosings([]);
+    setCart([]);
+    setSelectedCustomerState(null);
+    setDiscountInput(0);
+    setCartNotes('');
+
+    // Reset customer transaction, spent, and debt totals
+    setCustomers(prev =>
+      prev.map(c => ({
+        ...c,
+        totalTransactions: 0,
+        totalSpent: 0,
+        totalDebt: 0,
+        depositBalance: 0,
+        depositHistory: [],
+      }))
+    );
+
+    // Clear operational storage keys related to sales and cash
+    localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
+    localStorage.removeItem(STORAGE_KEYS.EXPENSES);
+    localStorage.removeItem(STORAGE_KEYS.MANUAL_JOURNALS);
+    localStorage.removeItem(STORAGE_KEYS.CASH_CLOSINGS);
+
+    // Clear Cloud Firestore documents in real time
+    clearSalesAndCashFirestoreDocuments();
+  }, []);
+
   // Financial calculations helper for any date interval
   const calculateProfitLoss = useCallback(
     (startDate: Date, endDate: Date, periodLabel: string): ProfitLossSummary => {
@@ -3158,6 +3194,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         updateStoreSettings,
         syncWithCloud,
         clearAllDatabase,
+        clearSalesAndCashData,
         calculateProfitLoss,
         // Backup & Restore
         localBackupHistory,
