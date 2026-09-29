@@ -42,19 +42,10 @@ import {
   Phone,
 } from 'lucide-react';
 
-const CATEGORIES: ('Semua' | ProductCategory)[] = [
-  'Semua',
-  'Makanan',
-  'Minuman',
-  'Snack & Gorengan',
-  'Sembako & Kebutuhan',
-  'Rokok & Pulsa',
-  'Lainnya',
-];
-
 export const POSView: React.FC = () => {
   const {
     products,
+    categories,
     customers,
     transactions,
     cart,
@@ -86,7 +77,7 @@ export const POSView: React.FC = () => {
   } = useWarung();
 
   // Search & Filter
-  const [selectedCategory, setSelectedCategory] = useState<'Semua' | ProductCategory>('Semua');
+  const [selectedCategory, setSelectedCategory] = useState<string>('Semua');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Today active transactions count for dashboard badge
@@ -372,20 +363,44 @@ export const POSView: React.FC = () => {
 
           {/* Category Filter Pills */}
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat}
-                id={`cat-filter-${cat.replace(/\s+/g, '-').toLowerCase()}`}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
-                  selectedCategory === cat
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+            <button
+              id="cat-filter-semua"
+              onClick={() => setSelectedCategory('Semua')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
+                selectedCategory === 'Semua'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <span>Semua</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold ${selectedCategory === 'Semua' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {products.filter(p => !p.isArchived).length}
+              </span>
+            </button>
+
+            {categories.map(cat => {
+              const count = products.filter(p => !p.isArchived && p.category === cat.name).length;
+              return (
+                <button
+                  key={cat.id}
+                  id={`cat-filter-${cat.name.replace(/\s+/g, '-').toLowerCase()}`}
+                  onClick={() => setSelectedCategory(cat.name)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
+                    selectedCategory === cat.name
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  <span>{cat.icon || '🏷️'}</span>
+                  <span>{cat.name}</span>
+                  {count > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold ${selectedCategory === cat.name ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {/* Products Grid */}

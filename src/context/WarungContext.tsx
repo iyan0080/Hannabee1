@@ -27,6 +27,7 @@ import {
   BackupDataPayload,
   LocalAutoBackupRecord,
   AutoBackupConfig,
+  Category,
 } from '../types';
 import {
   createBackupPayload,
@@ -49,9 +50,11 @@ import {
   INITIAL_MANUAL_JOURNALS,
   INITIAL_CASH_CLOSINGS,
   INITIAL_SHOPPING_ITEMS,
+  INITIAL_CATEGORIES,
 } from '../utils/initialData';
 import {
   subscribeToProducts,
+  subscribeToCategories,
   subscribeToTransactions,
   subscribeToExpenses,
   subscribeToCustomers,
@@ -62,6 +65,8 @@ import {
   subscribeToShoppingItems,
   saveProductToFirestore,
   deleteProductFromFirestore,
+  saveCategoryToFirestore,
+  deleteCategoryFromFirestore,
   saveTransactionToFirestore,
   deleteTransactionFromFirestore,
   saveExpenseToFirestore,
@@ -98,11 +103,17 @@ interface WarungContextType {
 
   // Master Data
   products: Product[];
+  categories: Category[];
   transactions: Transaction[];
   expenses: Expense[];
   customers: Customer[];
   storeSettings: StoreSettings;
   syncState: CloudSyncState;
+
+  // Category CRUD
+  addCategory: (categoryData: Omit<Category, 'id' | 'createdAt' | 'updatedAt'>) => { success: boolean; category?: Category; message?: string };
+  updateCategory: (id: string, updatedData: Partial<Category>, updateLinkedProducts?: boolean) => { success: boolean; message?: string };
+  deleteCategory: (id: string, reassignToCategoryName?: string) => { success: boolean; message?: string };
 
   // Shopping / Restock Notes
   shoppingItems: ShoppingItem[];
@@ -111,6 +122,20 @@ interface WarungContextType {
   deleteShoppingItem: (id: string) => void;
   toggleShoppingItemStatus: (id: string, status?: ShoppingItemStatus) => void;
   recordShoppingItemAsExpense: (itemId: string, actualExpenseAmount?: number, paymentMethod?: 'TUNAI' | 'TRANSFER' | 'LAINNYA') => void;
+  inputShoppingItemActualPrice: (
+    itemId: string,
+    actualPrice: number,
+    options?: {
+      markAsPurchased?: boolean;
+      recordToExpense?: boolean;
+      paymentMethod?: 'TUNAI' | 'TRANSFER';
+      shoppingDate?: string;
+      archiveToHistory?: boolean;
+    }
+  ) => void;
+  archivePurchasedShoppingItems: (targetShoppingDate?: string, itemIds?: string[]) => { success: boolean; count: number };
+  restoreShoppingItemFromArchive: (id: string) => void;
+  restoreShoppingSession: (shoppingDate: string) => void;
 
   // Bookkeeping / Pembukuan
   manualJournals: ManualJournalEntry[];
@@ -241,6 +266,7 @@ const STORAGE_KEYS = {
   USERS: 'warung_users_v3',
   CURRENT_USER: 'warung_current_user_v3',
   PRODUCTS: 'warung_products_v2',
+  CATEGORIES: 'warung_categories_v1',
   TRANSACTIONS: 'warung_transactions_v2',
   EXPENSES: 'warung_expenses_v2',
   CUSTOMERS: 'warung_customers_v2',
@@ -319,6 +345,35 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const { imageUrl, ...clean } = p as any;
       return clean as Product;
     });
+  });
+
+  const [categories, setCategories] = useState<Category[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
+    let cats: Category[] = saved ? JSON.parse(saved) : INITIAL_CATEGORIES;
+    if (!Array.isArray(cats) || cats.length === 0) {
+      cats = [...INITIAL_CATEGORIES];
+    }
+    // Auto-discover any product category not yet in categories
+    try {
+      const savedProds = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
+      if (savedProds) {
+        const parsedProds: Product[] = JSON.parse(savedProds);
+        parsedProds.forEach(p => {
+          if (p.category && !cats.some(c => c.name.toLowerCase() === p.category.toLowerCase())) {
+            cats.push({
+              id: 'cat-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+              name: p.category,
+              icon: '📦',
+              color: 'slate',
+              createdAt: new Date().toISOString(),
+            });
+          }
+        });
+      }
+    } catch {
+      // ignore
+    }
+    return cats;
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
@@ -493,6 +548,10 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, [products]);
 
   useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
+  }, [categories]);
+
+  useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions));
   }, [transactions]);
 
@@ -549,6 +608,14 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       });
       setProducts(cleaned);
       setSyncState(prev => ({ ...prev, status: 'synced', lastSyncedAt: new Date().toISOString() }));
+    });
+
+    // 1b. Subscribe to Categories
+    const unsubCategories = subscribeToCategories(cloudCategories => {
+      if (cloudCategories.length > 0) {
+        setCategories(cloudCategories);
+        setSyncState(prev => ({ ...prev, status: 'synced', lastSyncedAt: new Date().toISOString() }));
+      }
     });
 
     // 2. Subscribe to Transactions
@@ -617,6 +684,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     return () => {
       unsubProducts();
+      unsubCategories();
       unsubTransactions();
       unsubExpenses();
       unsubCustomers();
@@ -639,6 +707,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     try {
       await pushFullDatabaseToFirestore({
         products,
+        categories,
         transactions,
         expenses,
         customers,
@@ -1950,6 +2019,115 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     deleteProductFromFirestore(id);
   }, []);
 
+  // Category CRUD
+  const addCategory = useCallback((categoryData: Omit<Category, 'id' | 'createdAt' | 'updatedAt'>): { success: boolean; category?: Category; message?: string } => {
+    const trimmedName = categoryData.name.trim();
+    if (!trimmedName) {
+      return { success: false, message: 'Nama kategori tidak boleh kosong.' };
+    }
+
+    const exists = categories.some(c => c.name.trim().toLowerCase() === trimmedName.toLowerCase());
+    if (exists) {
+      return { success: false, message: `Kategori "${trimmedName}" sudah ada.` };
+    }
+
+    const newCategory: Category = {
+      ...categoryData,
+      id: 'cat-' + Date.now(),
+      name: trimmedName,
+      icon: categoryData.icon || '🏷️',
+      color: categoryData.color || 'blue',
+      description: categoryData.description || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setCategories(prev => [...prev, newCategory]);
+    saveCategoryToFirestore(newCategory);
+    return { success: true, category: newCategory, message: `Kategori "${newCategory.name}" berhasil ditambahkan.` };
+  }, [categories]);
+
+  const updateCategory = useCallback((id: string, updatedData: Partial<Category>, updateLinkedProducts: boolean = true): { success: boolean; message?: string } => {
+    const target = categories.find(c => c.id === id);
+    if (!target) {
+      return { success: false, message: 'Kategori tidak ditemukan.' };
+    }
+
+    if (updatedData.name) {
+      const trimmed = updatedData.name.trim();
+      if (!trimmed) {
+        return { success: false, message: 'Nama kategori tidak boleh kosong.' };
+      }
+      const duplicate = categories.some(c => c.id !== id && c.name.trim().toLowerCase() === trimmed.toLowerCase());
+      if (duplicate) {
+        return { success: false, message: `Kategori dengan nama "${trimmed}" sudah ada.` };
+      }
+    }
+
+    const oldName = target.name;
+    const newName = updatedData.name ? updatedData.name.trim() : oldName;
+
+    const updatedCategory: Category = {
+      ...target,
+      ...updatedData,
+      name: newName,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setCategories(prev => prev.map(c => (c.id === id ? updatedCategory : c)));
+    saveCategoryToFirestore(updatedCategory);
+
+    // If name changed and updateLinkedProducts is true, cascade to products
+    if (oldName !== newName && updateLinkedProducts) {
+      setProducts(prev => {
+        const updated = prev.map(p => {
+          if (p.category === oldName) {
+            const up: Product = { ...p, category: newName as any };
+            saveProductToFirestore(up);
+            return up;
+          }
+          return p;
+        });
+        return updated;
+      });
+    }
+
+    return { success: true, message: `Kategori "${newName}" berhasil diperbarui.` };
+  }, [categories]);
+
+  const deleteCategory = useCallback((id: string, reassignToCategoryName?: string): { success: boolean; message?: string } => {
+    const target = categories.find(c => c.id === id);
+    if (!target) {
+      return { success: false, message: 'Kategori tidak ditemukan.' };
+    }
+
+    if (categories.length <= 1) {
+      return { success: false, message: 'Minimal harus ada 1 kategori di toko.' };
+    }
+
+    const catName = target.name;
+    const affectedProducts = products.filter(p => p.category === catName);
+
+    if (affectedProducts.length > 0) {
+      const fallbackTarget = reassignToCategoryName || (categories.find(c => c.id !== id)?.name || 'Lainnya');
+      setProducts(prev => {
+        const updated = prev.map(p => {
+          if (p.category === catName) {
+            const up: Product = { ...p, category: fallbackTarget as any };
+            saveProductToFirestore(up);
+            return up;
+          }
+          return p;
+        });
+        return updated;
+      });
+    }
+
+    setCategories(prev => prev.filter(c => c.id !== id));
+    deleteCategoryFromFirestore(id);
+    return { success: true, message: `Kategori "${catName}" berhasil dihapus.` };
+  }, [categories, products]);
+
   const updateStock = useCallback((productId: string, newStock: number) => {
     setProducts(prev =>
       prev.map(p => {
@@ -2136,6 +2314,8 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       ...itemData,
       id: 'shop-' + Date.now(),
       createdAt: new Date().toISOString(),
+      shoppingDate: itemData.shoppingDate || new Date().toISOString().slice(0, 10),
+      isArchived: itemData.isArchived || false,
       status: itemData.status || 'PENDING',
       createdBy: currentUser?.name || storeSettings.cashierName,
     };
@@ -2167,11 +2347,13 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       prev.map(item => {
         if (item.id === id) {
           const nextStatus = newStatus || (item.status === 'PURCHASED' ? 'PENDING' : 'PURCHASED');
+          const isNowPurchased = nextStatus === 'PURCHASED';
           const updated: ShoppingItem = {
             ...item,
             status: nextStatus,
-            purchasedAt: nextStatus === 'PURCHASED' ? new Date().toISOString() : undefined,
-            purchasedBy: nextStatus === 'PURCHASED' ? (currentUser?.name || storeSettings.cashierName) : undefined,
+            purchasedAt: isNowPurchased ? (item.purchasedAt || new Date().toISOString()) : undefined,
+            purchasedBy: isNowPurchased ? (currentUser?.name || storeSettings.cashierName) : undefined,
+            shoppingDate: isNowPurchased ? (item.shoppingDate || new Date().toISOString().slice(0, 10)) : item.shoppingDate,
           };
           saveShoppingItemToFirestore(updated);
           return updated;
@@ -2191,6 +2373,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const amount = actualExpenseAmount || targetItem.actualPrice || targetItem.estimatedPrice || 0;
     const expenseDesc = `Belanja Bahan: ${targetItem.name} (${targetItem.quantity} ${targetItem.unit || 'item'})`;
+    const dateUsed = targetItem.shoppingDate || (targetItem.purchasedAt ? targetItem.purchasedAt.slice(0, 10) : new Date().toISOString().slice(0, 10));
     
     // Create new Expense
     const newExpense: Expense = {
@@ -2199,10 +2382,10 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       category: 'Belanja Bahan Baku',
       amount,
       paymentMethod: paymentMethod === 'TRANSFER' ? 'TRANSFER' : 'TUNAI',
-      timestamp: new Date().toISOString(),
+      timestamp: `${dateUsed}T${new Date().toTimeString().slice(0, 8)}.000Z`,
       recipient: targetItem.supplierLocation || undefined,
       cashierName: currentUser?.name || storeSettings.cashierName,
-      notes: targetItem.supplierLocation ? `Dibeli di ${targetItem.supplierLocation}. ${targetItem.notes || ''}` : targetItem.notes,
+      notes: targetItem.supplierLocation ? `Dibeli di ${targetItem.supplierLocation}. Tanggal: ${dateUsed}. ${targetItem.notes || ''}` : `Tanggal: ${dateUsed}. ${targetItem.notes || ''}`,
     };
 
     setExpenses(prev => [newExpense, ...prev]);
@@ -2213,7 +2396,8 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       ...targetItem,
       status: 'PURCHASED',
       actualPrice: amount,
-      purchasedAt: new Date().toISOString(),
+      shoppingDate: dateUsed,
+      purchasedAt: targetItem.purchasedAt || new Date().toISOString(),
       purchasedBy: currentUser?.name || storeSettings.cashierName,
       isRecordedToExpense: true,
       expenseId: newExpense.id,
@@ -2224,6 +2408,132 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     );
     saveShoppingItemToFirestore(updatedShopping);
   }, [shoppingItems, currentUser, storeSettings]);
+
+  const inputShoppingItemActualPrice = useCallback((
+    itemId: string,
+    actualPrice: number,
+    options?: {
+      markAsPurchased?: boolean;
+      recordToExpense?: boolean;
+      paymentMethod?: 'TUNAI' | 'TRANSFER';
+      shoppingDate?: string;
+      archiveToHistory?: boolean;
+    }
+  ) => {
+    const targetItem = shoppingItems.find(s => s.id === itemId);
+    if (!targetItem) return;
+
+    const shouldMarkPurchased = options?.markAsPurchased ?? true;
+    const shouldRecordExpense = options?.recordToExpense ?? true;
+    const shouldArchive = options?.archiveToHistory ?? true;
+    const payMethod = options?.paymentMethod || 'TUNAI';
+    const dateUsed = options?.shoppingDate || targetItem.shoppingDate || new Date().toISOString().slice(0, 10);
+
+    let newExpenseId = targetItem.expenseId;
+
+    if (shouldRecordExpense && !targetItem.isRecordedToExpense) {
+      const expenseDesc = `Belanja Bahan: ${targetItem.name} (${targetItem.quantity} ${targetItem.unit || 'item'})`;
+      const newExpense: Expense = {
+        id: 'exp-' + Date.now(),
+        title: expenseDesc,
+        category: 'Belanja Bahan Baku',
+        amount: actualPrice,
+        paymentMethod: payMethod === 'TRANSFER' ? 'TRANSFER' : 'TUNAI',
+        timestamp: `${dateUsed}T${new Date().toTimeString().slice(0, 8)}.000Z`,
+        recipient: targetItem.supplierLocation || undefined,
+        cashierName: currentUser?.name || storeSettings.cashierName,
+        notes: targetItem.supplierLocation ? `Dibeli di ${targetItem.supplierLocation}. Tanggal: ${dateUsed}. Realisasi: Rp ${actualPrice.toLocaleString('id-ID')}. ${targetItem.notes || ''}` : `Tanggal: ${dateUsed}. Realisasi: Rp ${actualPrice.toLocaleString('id-ID')}. ${targetItem.notes || ''}`,
+      };
+
+      setExpenses(prev => [newExpense, ...prev]);
+      saveExpenseToFirestore(newExpense);
+      newExpenseId = newExpense.id;
+    } else if (targetItem.isRecordedToExpense && targetItem.expenseId) {
+      updateExpense(targetItem.expenseId, {
+        amount: actualPrice,
+      });
+    }
+
+    const updatedShopping: ShoppingItem = {
+      ...targetItem,
+      actualPrice,
+      shoppingDate: dateUsed,
+      status: shouldMarkPurchased ? 'PURCHASED' : targetItem.status,
+      purchasedAt: shouldMarkPurchased ? (targetItem.purchasedAt || new Date().toISOString()) : targetItem.purchasedAt,
+      purchasedBy: shouldMarkPurchased ? (targetItem.purchasedBy || currentUser?.name || storeSettings.cashierName) : targetItem.purchasedBy,
+      isRecordedToExpense: shouldRecordExpense ? true : targetItem.isRecordedToExpense,
+      expenseId: newExpenseId,
+      isArchived: shouldArchive ? true : targetItem.isArchived,
+    };
+
+    setShoppingItems(prev =>
+      prev.map(s => s.id === itemId ? updatedShopping : s)
+    );
+    saveShoppingItemToFirestore(updatedShopping);
+  }, [shoppingItems, currentUser, storeSettings, updateExpense]);
+
+  const archivePurchasedShoppingItems = useCallback((targetShoppingDate?: string, itemIds?: string[]): { success: boolean; count: number } => {
+    const purchasedToArchive = shoppingItems.filter(s =>
+      itemIds && itemIds.length > 0
+        ? itemIds.includes(s.id) && !s.isArchived
+        : s.status === 'PURCHASED' && !s.isArchived
+    );
+    if (purchasedToArchive.length === 0) {
+      return { success: false, count: 0 };
+    }
+
+    const archiveDate = targetShoppingDate || new Date().toISOString().slice(0, 10);
+
+    setShoppingItems(prev => {
+      const updated = prev.map(s => {
+        const shouldArchive = itemIds && itemIds.length > 0
+          ? itemIds.includes(s.id) && !s.isArchived
+          : s.status === 'PURCHASED' && !s.isArchived;
+
+        if (shouldArchive) {
+          const up: ShoppingItem = {
+            ...s,
+            status: 'PURCHASED',
+            isArchived: true,
+            shoppingDate: targetShoppingDate || s.shoppingDate || (s.purchasedAt ? s.purchasedAt.slice(0, 10) : archiveDate),
+            purchasedAt: s.purchasedAt || new Date().toISOString(),
+          };
+          saveShoppingItemToFirestore(up);
+          return up;
+        }
+        return s;
+      });
+      return updated;
+    });
+
+    return { success: true, count: purchasedToArchive.length };
+  }, [shoppingItems]);
+
+  const restoreShoppingItemFromArchive = useCallback((id: string) => {
+    setShoppingItems(prev =>
+      prev.map(s => {
+        if (s.id === id) {
+          const up: ShoppingItem = { ...s, isArchived: false };
+          saveShoppingItemToFirestore(up);
+          return up;
+        }
+        return s;
+      })
+    );
+  }, []);
+
+  const restoreShoppingSession = useCallback((shoppingDate: string) => {
+    setShoppingItems(prev =>
+      prev.map(s => {
+        if (s.isArchived && s.shoppingDate === shoppingDate) {
+          const up: ShoppingItem = { ...s, isArchived: false };
+          saveShoppingItemToFirestore(up);
+          return up;
+        }
+        return s;
+      })
+    );
+  }, []);
 
   // Bookkeeping CRUD
   const addManualJournalEntry = useCallback((entryData: Omit<ManualJournalEntry, 'id'>): ManualJournalEntry => {
@@ -2934,6 +3244,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const payload = createBackupPayload({
         customers: payloadCustomers,
         products: payloadProducts,
+        categories: backupType === 'FULL' || backupType === 'PRODUCTS' ? categories : undefined,
         transactions: payloadTransactions,
         expenses: payloadExpenses,
         manualJournals: payloadManualJournals,
@@ -2952,13 +3263,14 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
       return payload;
     },
-    [customers, products, transactions, expenses, manualJournals, cashClosings, shoppingItems, storeSettings, users]
+    [customers, products, categories, transactions, expenses, manualJournals, cashClosings, shoppingItems, storeSettings, users]
   );
 
   const saveCurrentAsLocalSnapshot = useCallback((): LocalAutoBackupRecord => {
     const payload = createBackupPayload({
       customers,
       products,
+      categories,
       transactions,
       expenses,
       manualJournals,
@@ -2972,7 +3284,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const snapshot = saveLocalBackupSnapshot(payload, 'MANUAL', 'HP Admin 1');
     setLocalBackupHistory(getLocalBackupSnapshots());
     return snapshot;
-  }, [customers, products, transactions, expenses, manualJournals, cashClosings, shoppingItems, storeSettings, users]);
+  }, [customers, products, categories, transactions, expenses, manualJournals, cashClosings, shoppingItems, storeSettings, users]);
 
   const deleteLocalBackup = useCallback((id: string) => {
     const updated = deleteLocalBackupSnapshot(id);
@@ -2998,6 +3310,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
         const { data } = payload;
         let newProducts = products;
+        let newCategories = categories;
         let newTransactions = transactions;
         let newExpenses = expenses;
         let newCustomers = customers;
@@ -3009,6 +3322,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
         if (mode === 'REPLACE') {
           if (Array.isArray(data.products)) newProducts = data.products;
+          if (Array.isArray(data.categories) && data.categories.length > 0) newCategories = data.categories;
           if (Array.isArray(data.transactions)) newTransactions = data.transactions;
           if (Array.isArray(data.expenses)) newExpenses = data.expenses;
           if (Array.isArray(data.customers)) newCustomers = data.customers;
@@ -3023,6 +3337,11 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             const map = new Map<string, Product>(products.map(p => [p.id, p]));
             data.products.forEach(p => map.set(p.id, p));
             newProducts = Array.from(map.values());
+          }
+          if (Array.isArray(data.categories)) {
+            const map = new Map<string, Category>(categories.map(c => [c.id, c]));
+            data.categories.forEach(c => map.set(c.id, c));
+            newCategories = Array.from(map.values());
           }
           if (Array.isArray(data.transactions)) {
             const map = new Map<string, Transaction>(transactions.map(t => [t.id, t]));
@@ -3070,6 +3389,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
         // Apply state updates
         setProducts(newProducts);
+        setCategories(newCategories);
         setTransactions(newTransactions);
         setExpenses(newExpenses);
         setCustomers(newCustomers);
@@ -3082,6 +3402,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         // Sync to cloud Firestore
         await pushFullDatabaseToFirestore({
           products: newProducts,
+          categories: newCategories,
           transactions: newTransactions,
           expenses: newExpenses,
           customers: newCustomers,
@@ -3131,6 +3452,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         toggleUserStatus,
         resetUserPassword,
         products,
+        categories,
         transactions,
         expenses,
         customers,
@@ -3142,6 +3464,10 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         deleteShoppingItem,
         toggleShoppingItemStatus,
         recordShoppingItemAsExpense,
+        inputShoppingItemActualPrice,
+        archivePurchasedShoppingItems,
+        restoreShoppingItemFromArchive,
+        restoreShoppingSession,
         manualJournals,
         cashClosings,
         addManualJournalEntry,
@@ -3181,6 +3507,9 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         addProduct,
         updateProduct,
         deleteProduct,
+        addCategory,
+        updateCategory,
+        deleteCategory,
         updateStock,
         toggleArchiveProduct,
         addExpense,

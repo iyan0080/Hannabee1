@@ -17,27 +17,31 @@ import {
   Archive,
   ArchiveRestore,
   FolderArchive,
+  FolderTree,
   Eye,
   EyeOff,
   RefreshCw,
 } from 'lucide-react';
-
-const CATEGORIES: ProductCategory[] = [
-  'Makanan',
-  'Minuman',
-  'Snack & Gorengan',
-  'Sembako & Kebutuhan',
-  'Rokok & Pulsa',
-  'Lainnya',
-];
+import { CategoryManagementView } from './CategoryManagementView';
 
 export type ProductStatusTab = 'ALL_ACTIVE' | 'AVAILABLE' | 'UNAVAILABLE' | 'ARCHIVED';
 
 export const MenuManagementView: React.FC = () => {
-  const { products, addProduct, updateProduct, deleteProduct, updateStock, toggleArchiveProduct, storeSettings } = useWarung();
+  const {
+    products,
+    categories,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    updateStock,
+    toggleArchiveProduct,
+    storeSettings,
+    addCategory,
+  } = useWarung();
 
+  const [activeSubTab, setActiveSubTab] = useState<'CATALOG' | 'CATEGORIES'>('CATALOG');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<'ALL' | ProductCategory>('ALL');
+  const [selectedCategory, setSelectedCategory] = useState<'ALL' | string>('ALL');
   const [statusFilter, setStatusFilter] = useState<ProductStatusTab>('ALL_ACTIVE');
 
   // Modal Product State
@@ -46,7 +50,7 @@ export const MenuManagementView: React.FC = () => {
 
   // Form Fields
   const [name, setName] = useState('');
-  const [category, setCategory] = useState<ProductCategory>('Makanan');
+  const [category, setCategory] = useState<string>('Makanan');
   const [basePrice, setBasePrice] = useState<number | ''>('');
   const [baseCost, setBaseCost] = useState<number | ''>('');
   const [stock, setStock] = useState<number | ''>(50);
@@ -54,6 +58,13 @@ export const MenuManagementView: React.FC = () => {
   const [emoji, setEmoji] = useState('🍽️');
   const [isAvailable, setIsAvailable] = useState(true);
   const [isArchived, setIsArchived] = useState(false);
+
+  // Quick Category creation inside Product Modal
+  const [showQuickAddCat, setShowQuickAddCat] = useState(false);
+  const [quickCatName, setQuickCatName] = useState('');
+  const [quickCatIcon, setQuickCatIcon] = useState('🍽️');
+  const [quickCatColor, setQuickCatColor] = useState('amber');
+  const [quickCatError, setQuickCatError] = useState<string | null>(null);
 
   // Dynamic Variants Builder
   const [variants, setVariants] = useState<ProductVariant[]>([]);
@@ -85,7 +96,7 @@ export const MenuManagementView: React.FC = () => {
   const openAddModal = () => {
     setEditingId(null);
     setName('');
-    setCategory('Makanan');
+    setCategory(categories[0]?.name || 'Makanan');
     setBasePrice('');
     setBaseCost('');
     setStock(50);
@@ -95,6 +106,30 @@ export const MenuManagementView: React.FC = () => {
     setIsArchived(false);
     setVariants([]);
     setShowModal(true);
+  };
+
+  const handleCreateQuickCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    setQuickCatError(null);
+    const trimmed = quickCatName.trim();
+    if (!trimmed) {
+      setQuickCatError('Nama kategori wajib diisi.');
+      return;
+    }
+    const res = addCategory({
+      name: trimmed,
+      icon: quickCatIcon,
+      color: quickCatColor,
+    });
+    if (!res.success) {
+      setQuickCatError(res.message || 'Gagal membuat kategori.');
+      return;
+    }
+    if (res.category) {
+      setCategory(res.category.name);
+    }
+    setShowQuickAddCat(false);
+    setQuickCatName('');
   };
 
   const openEditModal = (p: Product) => {
@@ -159,42 +194,95 @@ export const MenuManagementView: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-5 space-y-5">
       
-      {/* Header */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center font-bold">
-              📋
-            </span>
-            <h2 className="text-base sm:text-lg font-bold text-slate-900">
-              Katalog Menu & Varian Produk
-            </h2>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Kelola foto menu (maks 1MB), arsipkan menu tidak tersedia, HPP modal, opsi varian tambahan harga, dan stok barang.
-          </p>
-        </div>
+      {/* SubTab Switcher: Katalog vs Kategori */}
+      <div className="flex items-center gap-2 p-1.5 bg-slate-100/90 rounded-2xl w-fit border border-slate-200">
+        <button
+          id="btn-subtab-catalog"
+          type="button"
+          onClick={() => setActiveSubTab('CATALOG')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+            activeSubTab === 'CATALOG'
+              ? 'bg-white text-slate-900 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Package size={15} />
+          <span>Katalog Menu & Produk</span>
+          <span className="px-1.5 py-0.5 rounded-md text-[10px] bg-slate-200 text-slate-700 font-bold">
+            {products.length}
+          </span>
+        </button>
 
-        <div className="flex items-center gap-2">
-          <button
-            id="export-menu-excel-btn"
-            onClick={() => exportProductsToExcel(filteredProducts, storeSettings)}
-            className="px-3.5 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
-          >
-            <FileSpreadsheet size={15} className="text-slate-600" />
-            <span>Ekspor Excel</span>
-          </button>
-
-          <button
-            id="open-add-product-modal-btn"
-            onClick={openAddModal}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
-          >
-            <Plus size={16} />
-            <span>+ Tambah Menu / Produk</span>
-          </button>
-        </div>
+        <button
+          id="btn-subtab-categories"
+          type="button"
+          onClick={() => setActiveSubTab('CATEGORIES')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+            activeSubTab === 'CATEGORIES'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-amber-700'
+          }`}
+        >
+          <FolderTree size={15} className={activeSubTab === 'CATEGORIES' ? 'text-white' : 'text-amber-600'} />
+          <span>Kelola Kategori Barang</span>
+          <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${activeSubTab === 'CATEGORIES' ? 'bg-amber-700 text-white' : 'bg-amber-100 text-amber-800'}`}>
+            {categories.length}
+          </span>
+        </button>
       </div>
+
+      {activeSubTab === 'CATEGORIES' ? (
+        <CategoryManagementView onBackToMenu={() => setActiveSubTab('CATALOG')} />
+      ) : (
+        <>
+          {/* Header */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center font-bold">
+                  📋
+                </span>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                  Katalog Menu & Varian Produk
+                </h2>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Kelola foto menu (maks 1MB), arsipkan menu tidak tersedia, HPP modal, opsi varian tambahan harga, dan stok barang.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                id="btn-switch-to-categories"
+                type="button"
+                onClick={() => setActiveSubTab('CATEGORIES')}
+                className="px-3.5 py-2 bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
+              >
+                <FolderTree size={15} className="text-amber-600" />
+                <span>Kelola Kategori ({categories.length})</span>
+              </button>
+
+              <button
+                id="export-menu-excel-btn"
+                type="button"
+                onClick={() => exportProductsToExcel(filteredProducts, storeSettings)}
+                className="px-3.5 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
+              >
+                <FileSpreadsheet size={15} className="text-slate-600" />
+                <span>Ekspor Excel</span>
+              </button>
+
+              <button
+                id="open-add-product-modal-btn"
+                type="button"
+                onClick={openAddModal}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
+              >
+                <Plus size={16} />
+                <span>+ Tambah Menu / Produk</span>
+              </button>
+            </div>
+          </div>
 
       {/* Status Filter Tabs (Semua Aktif, Tersedia, Habis, Diarsipkan) */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
@@ -275,13 +363,13 @@ export const MenuManagementView: React.FC = () => {
         <select
           id="menu-category-filter"
           value={selectedCategory}
-          onChange={e => setSelectedCategory(e.target.value as any)}
+          onChange={e => setSelectedCategory(e.target.value)}
           className="w-full sm:w-64 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium"
         >
-          <option value="ALL">Semua Kategori</option>
-          {CATEGORIES.map(cat => (
-            <option key={cat} value={cat}>
-              {cat}
+          <option value="ALL">Semua Kategori ({categories.length})</option>
+          {categories.map(cat => (
+            <option key={cat.id} value={cat.name}>
+              {cat.icon || '🏷️'} {cat.name}
             </option>
           ))}
         </select>
@@ -520,16 +608,30 @@ export const MenuManagementView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-medium text-slate-700 mb-1">Kategori *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-medium text-slate-700">Kategori *</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickCatName('');
+                        setQuickCatError(null);
+                        setShowQuickAddCat(true);
+                      }}
+                      className="text-[11px] font-bold text-amber-600 hover:text-amber-700 flex items-center gap-0.5"
+                    >
+                      <Plus size={12} />
+                      <span>Kategori Baru</span>
+                    </button>
+                  </div>
                   <select
                     id="product-category-select"
                     value={category}
-                    onChange={e => setCategory(e.target.value as ProductCategory)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                    onChange={e => setCategory(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-900 font-medium"
                   >
-                    {CATEGORIES.map(cat => (
-                      <option key={cat} value={cat}>
-                        {cat}
+                    {categories.map(cat => (
+                      <option key={cat.id} value={cat.name}>
+                        {cat.icon || '🏷️'} {cat.name}
                       </option>
                     ))}
                   </select>
@@ -734,6 +836,81 @@ export const MenuManagementView: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* QUICK ADD CATEGORY MODAL */}
+      {showQuickAddCat && (
+        <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl p-5 border border-slate-200 animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                <span>🏷️</span>
+                <span>Tambah Kategori Baru</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowQuickAddCat(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateQuickCategory} className="space-y-3 mt-3">
+              {quickCatError && (
+                <p className="text-[11px] text-rose-600 font-medium bg-rose-50 p-2 rounded-lg">
+                  {quickCatError}
+                </p>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Kategori *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Misal: Minuman Dingin, Gorengan..."
+                  value={quickCatName}
+                  onChange={e => setQuickCatName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Emoji / Icon</label>
+                <div className="flex gap-2 items-center">
+                  <span className="text-xl w-9 h-9 flex items-center justify-center bg-slate-100 rounded-lg shrink-0">
+                    {quickCatIcon}
+                  </span>
+                  <input
+                    type="text"
+                    maxLength={4}
+                    value={quickCatIcon}
+                    onChange={e => setQuickCatIcon(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickAddCat(false)}
+                  className="px-3 py-1.5 text-xs text-slate-600 font-medium rounded-lg hover:bg-slate-100"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow-xs"
+                >
+                  Simpan & Pilih
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+        </>
       )}
 
     </div>

@@ -106,6 +106,9 @@
         "quantity": { "type": "number" },
         "unit": { "type": "string" },
         "estimatedPrice": { "type": "number" },
+        "actualPrice": { "type": "number", "description": "Realisasi harga beli aktual di pasar/toko" },
+        "shoppingDate": { "type": "string", "description": "Tanggal belanja atau nota belanja bahan baku" },
+        "isArchived": { "type": "boolean", "description": "Apakah sudah diarsipkan ke history riwayat belanja" },
         "status": { "type": "string" }
       },
       "required": ["id", "name", "quantity", "unit"]

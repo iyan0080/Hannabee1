@@ -18,11 +18,13 @@ import {
   ManualJournalEntry,
   CashClosingRecord,
   ShoppingItem,
+  Category,
 } from '../types';
 
 // Collection references
 export const COLLECTIONS = {
   PRODUCTS: 'products',
+  CATEGORIES: 'categories',
   TRANSACTIONS: 'transactions',
   EXPENSES: 'expenses',
   CUSTOMERS: 'customers',
@@ -288,9 +290,54 @@ export function subscribeToShoppingItems(
   }
 }
 
+export function subscribeToCategories(
+  onUpdate: (categories: Category[]) => void,
+  onError?: (err: Error) => void
+) {
+  try {
+    const colRef = collection(db, COLLECTIONS.CATEGORIES);
+    return onSnapshot(
+      colRef,
+      snapshot => {
+        const items: Category[] = [];
+        snapshot.forEach(docSnap => {
+          items.push(docSnap.data() as Category);
+        });
+        items.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        onUpdate(items);
+      },
+      err => {
+        console.warn('Categories sync snapshot listener notice:', err);
+        onError?.(err);
+      }
+    );
+  } catch (err: any) {
+    console.warn('Error setting up categories listener:', err);
+    return () => {};
+  }
+}
+
 // ==========================================
 // DIRECT FIRESTORE MUTATIONS
 // ==========================================
+
+export async function saveCategoryToFirestore(category: Category): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.CATEGORIES, category.id);
+    await setDoc(docRef, JSON.parse(JSON.stringify(category)), { merge: true });
+  } catch (err) {
+    console.error('Error saving category to Firestore:', err);
+  }
+}
+
+export async function deleteCategoryFromFirestore(categoryId: string): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.CATEGORIES, categoryId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.error('Error deleting category from Firestore:', err);
+  }
+}
 
 export async function saveProductToFirestore(product: Product): Promise<void> {
   try {
@@ -450,6 +497,7 @@ export async function clearAllFirestoreDocuments(): Promise<void> {
   try {
     const collectionsToClear = [
       COLLECTIONS.PRODUCTS,
+      COLLECTIONS.CATEGORIES,
       COLLECTIONS.TRANSACTIONS,
       COLLECTIONS.EXPENSES,
       COLLECTIONS.CUSTOMERS,
@@ -516,6 +564,7 @@ export async function clearSalesAndCashFirestoreDocuments(): Promise<void> {
 // Batch Sync all local state to Firestore
 export async function pushFullDatabaseToFirestore(data: {
   products: Product[];
+  categories?: Category[];
   transactions: Transaction[];
   expenses: Expense[];
   customers: Customer[];
@@ -529,6 +578,12 @@ export async function pushFullDatabaseToFirestore(data: {
     // 1. Products
     for (const p of data.products) {
       await saveProductToFirestore(p);
+    }
+    // 1b. Categories
+    if (data.categories) {
+      for (const cat of data.categories) {
+        await saveCategoryToFirestore(cat);
+      }
     }
     // 2. Transactions
     for (const t of data.transactions) {

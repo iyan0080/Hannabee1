@@ -8,6 +8,7 @@ import {
   ManualJournalEntry,
   CashClosingRecord,
   ShoppingItem,
+  Category,
 } from '../types';
 
 export const INITIAL_USERS: AppUser[] = [
@@ -76,4 +77,55 @@ export const INITIAL_EXPENSES: Expense[] = [];
 export const INITIAL_MANUAL_JOURNALS: ManualJournalEntry[] = [];
 export const INITIAL_CASH_CLOSINGS: CashClosingRecord[] = [];
 export const INITIAL_SHOPPING_ITEMS: ShoppingItem[] = [];
+
+export const INITIAL_CATEGORIES: Category[] = [
+  {
+    id: 'cat-makanan',
+    name: 'Makanan',
+    icon: '🍛',
+    color: 'amber',
+    description: 'Aneka makanan berat, nasi, lauk pauk, dan hidangan utama',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'cat-minuman',
+    name: 'Minuman',
+    icon: '🥤',
+    color: 'blue',
+    description: 'Aneka minuman dingin, kopi, teh, dan jus segar',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'cat-snack',
+    name: 'Snack & Gorengan',
+    icon: '🥟',
+    color: 'orange',
+    description: 'Camilan ringan, gorengan renyah, kerupuk, dan jajanan',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'cat-sembako',
+    name: 'Sembako & Kebutuhan',
+    icon: '🌾',
+    color: 'emerald',
+    description: 'Bahan pokok beras, minyak, gula, telur, dan bumbu dapur',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'cat-rokok',
+    name: 'Rokok & Pulsa',
+    icon: '📱',
+    color: 'purple',
+    description: 'Rokok, pulsa seluler, paket data, dan token listrik',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'cat-lainnya',
+    name: 'Lainnya',
+    icon: '📦',
+    color: 'slate',
+    description: 'Barang serba-serbi dan kategori umum lainnya',
+    createdAt: new Date().toISOString(),
+  },
+];
 

@@ -11,6 +11,7 @@ import {
   ShoppingItem,
   StoreSettings,
   AppUser,
+  Category,
 } from '../types';
 
 export const LOCAL_BACKUP_STORAGE_KEY = 'warung_local_backup_snapshots';
@@ -91,6 +92,7 @@ export function createBackupPayload(params: {
   shoppingItems: ShoppingItem[];
   storeSettings: StoreSettings;
   users: AppUser[];
+  categories?: Category[];
   backupType?: 'FULL' | 'CUSTOMERS' | 'PRODUCTS' | 'TRANSACTIONS' | 'CASH_BOOK';
   backupTarget?: string;
 }): BackupDataPayload {
@@ -115,6 +117,7 @@ export function createBackupPayload(params: {
       expenses: params.expenses.length,
       shoppingItems: params.shoppingItems.length,
       users: params.users.length,
+      categories: params.categories ? params.categories.length : undefined,
     },
     data: {
       customers: params.customers,
@@ -126,6 +129,7 @@ export function createBackupPayload(params: {
       shoppingItems: params.shoppingItems,
       storeSettings: params.storeSettings,
       users: params.users,
+      categories: params.categories,
     },
   };
 }

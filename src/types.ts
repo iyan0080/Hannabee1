@@ -6,13 +6,24 @@ export interface ProductVariant {
   sku?: string;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  icon?: string;
+  color?: string; // e.g. 'amber', 'emerald', 'blue', 'purple', 'rose', 'orange', 'cyan', 'indigo', 'slate'
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export type ProductCategory = 
   | 'Makanan'
   | 'Minuman'
   | 'Snack & Gorengan'
   | 'Sembako & Kebutuhan'
   | 'Rokok & Pulsa'
-  | 'Lainnya';
+  | 'Lainnya'
+  | (string & {});
 
 export interface Product {
   id: string;
@@ -414,6 +425,8 @@ export interface ShoppingItem {
   createdBy?: string;
   purchasedAt?: string;
   purchasedBy?: string;
+  shoppingDate?: string; // Tanggal Belanja / Nota (format: YYYY-MM-DD atau ISO date)
+  isArchived?: boolean; // Apakah sudah disimpan ke history riwayat belanja
   isRecordedToExpense?: boolean; // Apakah sudah dicatat ke Beban Pengeluaran / Buku Kas
   expenseId?: string; // ID pengeluaran terkait jika sudah dicatat
 }
@@ -437,6 +450,7 @@ export interface BackupDataPayload {
     expenses: number;
     shoppingItems: number;
     users: number;
+    categories?: number;
   };
   data: {
     customers: Customer[];
@@ -448,6 +462,7 @@ export interface BackupDataPayload {
     shoppingItems: ShoppingItem[];
     storeSettings: StoreSettings;
     users: AppUser[];
+    categories?: Category[];
   };
 }
 
