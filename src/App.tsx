@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { WarungProvider, useWarung } from './context/WarungContext';
+import { ModalProvider, useModal, useRegisterModal } from './context/ModalContext';
 import { Navbar, NavTab } from './components/Navbar';
 import { POSView } from './components/POSView';
 import { ShoppingListManager } from './components/ShoppingListManager';
@@ -11,95 +12,45 @@ import { UserManagementView } from './components/UserManagementView';
 import { SettingsView } from './components/SettingsView';
 import { AuthScreen } from './components/AuthScreen';
 import { exportProfitLossToExcel, exportProfitLossToPDF } from './utils/exportData';
-import { Menu, Plus, FileSpreadsheet, FileText, ShoppingCart, BarChart3, LogOut, UserCheck, AlertTriangle, X, Check } from 'lucide-react';
+import { Menu, Plus, FileSpreadsheet, FileText, ShoppingCart, BarChart3, LogOut, UserCheck, AlertTriangle, X, Check, ArrowLeft } from 'lucide-react';
 
 function MainApp() {
+  const { closeTopModal, hasOpenModal } = useModal();
   const [activeTab, setActiveTab] = useState<NavTab>('pos');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
-  const [exitToastVisible, setExitToastVisible] = useState(false);
-  const lastBackPressTimeRef = useRef<number>(0);
+  const [menuHistory, setMenuHistory] = useState<NavTab[]>(['pos']);
+  const [navNotice, setNavNotice] = useState<string | null>(null);
+
   const activeTabRef = useRef<NavTab>('pos');
+  const menuHistoryRef = useRef<NavTab[]>(['pos']);
+  const mobileMenuOpenRef = useRef<boolean>(false);
+  const showExitConfirmModalRef = useRef<boolean>(false);
 
   const { storeSettings, calculateProfitLoss, isAuthenticated, currentUser, logout } = useWarung();
 
-  // Keep activeTabRef in sync
+  // Register mobile drawer and exit confirm modal with ModalContext
+  useRegisterModal(mobileMenuOpen, () => setMobileMenuOpen(false), 'app-mobile-menu-drawer');
+  useRegisterModal(showExitConfirmModal, () => setShowExitConfirmModal(false), 'app-exit-confirm-modal');
+
+  // Keep refs in sync for event listeners
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
 
-  // Mobile Back Button Navigation Handler (HTML5 History API)
   useEffect(() => {
-    if (!isAuthenticated) return;
+    menuHistoryRef.current = menuHistory;
+  }, [menuHistory]);
 
-    // Push initial baseline state
-    window.history.replaceState({ appState: 'hannabee_dashboard', tab: 'pos' }, '', window.location.href);
-    window.history.pushState({ appState: 'hannabee_active', tab: activeTab }, '', window.location.href);
+  useEffect(() => {
+    mobileMenuOpenRef.current = mobileMenuOpen;
+  }, [mobileMenuOpen]);
 
-    const handlePopState = (e: PopStateEvent) => {
-      const currentTab = activeTabRef.current;
+  useEffect(() => {
+    showExitConfirmModalRef.current = showExitConfirmModal;
+  }, [showExitConfirmModal]);
 
-      if (currentTab !== 'pos') {
-        // If not in dashboard/POS, return to dashboard
-        setActiveTab('pos');
-        // Push state back to maintain history buffer
-        window.history.pushState({ appState: 'hannabee_active', tab: 'pos' }, '', window.location.href);
-      } else {
-        // Already in dashboard/POS: trigger Exit Confirmation Modal
-        const now = Date.now();
-        if (now - lastBackPressTimeRef.current < 2500) {
-          // Double press detected, ensure modal is open
-          setShowExitConfirmModal(true);
-        } else {
-          lastBackPressTimeRef.current = now;
-          setShowExitConfirmModal(true);
-          setExitToastVisible(true);
-          setTimeout(() => setExitToastVisible(false), 2500);
-        }
-        // Maintain history buffer so the browser page doesn't abruptly unload
-        window.history.pushState({ appState: 'hannabee_active', tab: 'pos' }, '', window.location.href);
-      }
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, [isAuthenticated]);
-
-  // When changing tab programmatically, push history
-  const handleTabChange = (newTab: NavTab) => {
-    setActiveTab(newTab);
-    if (newTab !== activeTab) {
-      window.history.pushState({ appState: 'hannabee_active', tab: newTab }, '', window.location.href);
-    }
-  };
-
-  const handleConfirmExit = () => {
-    setShowExitConfirmModal(false);
-    logout();
-  };
-
-  // If user is not authenticated, show AuthScreen (Login / Register)
-  if (!isAuthenticated) {
-    return <AuthScreen />;
-  }
-
-  // Quick export from header bar
-  const handleQuickExcel = () => {
-    const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const end = new Date();
-    const summary = calculateProfitLoss(start, end, 'Bulan Ini');
-    exportProfitLossToExcel(summary, storeSettings);
-  };
-
-  const handleQuickPDF = () => {
-    const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const end = new Date();
-    const summary = calculateProfitLoss(start, end, 'Bulan Ini');
-    exportProfitLossToPDF(summary, storeSettings);
-  };
-
+  // Tab Titles dictionary
   const tabTitles: { [key in NavTab]: { title: string; subtitle: string } } = {
     pos: {
       title: 'Kasir POS & Pesanan',
@@ -135,6 +86,172 @@ function MainApp() {
     },
   };
 
+  // Dedicated back action (used by device back button & header back button)
+  const handleGoBack = () => {
+    // 1. If mobile menu drawer is open, close it
+    if (mobileMenuOpenRef.current) {
+      setMobileMenuOpen(false);
+      return;
+    }
+
+    // 2. If exit modal is open, close it
+    if (showExitConfirmModalRef.current) {
+      setShowExitConfirmModal(false);
+      return;
+    }
+
+    // 3. If any pop-up / modal is open, close it!
+    const closed = closeTopModal();
+    if (closed) {
+      return;
+    }
+
+    // 4. If no modal is open, navigate to previously opened menu!
+    const currentHistory = [...menuHistoryRef.current];
+    if (currentHistory.length > 1) {
+      currentHistory.pop(); // Remove current tab
+      const previousTab = currentHistory[currentHistory.length - 1]; // Previous menu opened
+
+      setMenuHistory(currentHistory);
+      menuHistoryRef.current = currentHistory;
+
+      setActiveTab(previousTab);
+      activeTabRef.current = previousTab;
+
+      const tabTitle = tabTitles[previousTab]?.title || previousTab;
+      setNavNotice(`Kembali ke: ${tabTitle}`);
+      setTimeout(() => setNavNotice(null), 1800);
+
+      window.history.pushState({ appState: 'hannabee_active', tab: previousTab }, '', window.location.href);
+      return;
+    }
+
+    // 5. At root menu:
+    if (activeTabRef.current !== 'pos') {
+      setActiveTab('pos');
+      activeTabRef.current = 'pos';
+      setMenuHistory(['pos']);
+      menuHistoryRef.current = ['pos'];
+      window.history.pushState({ appState: 'hannabee_active', tab: 'pos' }, '', window.location.href);
+      return;
+    }
+
+    // Already at POS root menu: open exit confirmation modal
+    setShowExitConfirmModal(true);
+  };
+
+  // Mobile & Browser Back Button Navigation Handler (HTML5 History API)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Push initial baseline state
+    window.history.replaceState({ appState: 'hannabee_dashboard', tab: 'pos' }, '', window.location.href);
+    window.history.pushState({ appState: 'hannabee_active', tab: activeTab }, '', window.location.href);
+
+    const handlePopState = () => {
+      // 1. Priority 1: Close active pop-up / modal
+      if (mobileMenuOpenRef.current) {
+        setMobileMenuOpen(false);
+        window.history.pushState({ appState: 'hannabee_active', tab: activeTabRef.current }, '', window.location.href);
+        return;
+      }
+
+      if (showExitConfirmModalRef.current) {
+        setShowExitConfirmModal(false);
+        window.history.pushState({ appState: 'hannabee_active', tab: activeTabRef.current }, '', window.location.href);
+        return;
+      }
+
+      const closedModal = closeTopModal();
+      if (closedModal) {
+        // Pop-up successfully closed, keep history state intact
+        window.history.pushState({ appState: 'hannabee_active', tab: activeTabRef.current }, '', window.location.href);
+        return;
+      }
+
+      // 2. Priority 2: If no pop-up is open, navigate to PREVIOUSLY OPENED MENU!
+      const currentHistory = [...menuHistoryRef.current];
+      if (currentHistory.length > 1) {
+        currentHistory.pop(); // Remove current tab
+        const previousTab = currentHistory[currentHistory.length - 1]; // Previous menu opened
+
+        setMenuHistory(currentHistory);
+        menuHistoryRef.current = currentHistory;
+
+        setActiveTab(previousTab);
+        activeTabRef.current = previousTab;
+
+        const tabTitle = tabTitles[previousTab]?.title || previousTab;
+        setNavNotice(`Kembali ke: ${tabTitle}`);
+        setTimeout(() => setNavNotice(null), 1800);
+
+        window.history.pushState({ appState: 'hannabee_active', tab: previousTab }, '', window.location.href);
+        return;
+      }
+
+      // 3. Priority 3: At root menu:
+      if (activeTabRef.current !== 'pos') {
+        setActiveTab('pos');
+        activeTabRef.current = 'pos';
+        setMenuHistory(['pos']);
+        menuHistoryRef.current = ['pos'];
+        window.history.pushState({ appState: 'hannabee_active', tab: 'pos' }, '', window.location.href);
+        return;
+      }
+
+      // Already at POS root menu: open exit confirmation modal
+      setShowExitConfirmModal(true);
+      window.history.pushState({ appState: 'hannabee_active', tab: 'pos' }, '', window.location.href);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [isAuthenticated, closeTopModal]);
+
+  // When changing tab programmatically, record history stack
+  const handleTabChange = (newTab: NavTab) => {
+    if (newTab === activeTab) return;
+
+    setActiveTab(newTab);
+    activeTabRef.current = newTab;
+
+    setMenuHistory(prev => {
+      if (prev[prev.length - 1] === newTab) return prev;
+      const updated = [...prev, newTab];
+      if (updated.length > 30) updated.shift();
+      return updated;
+    });
+
+    window.history.pushState({ appState: 'hannabee_active', tab: newTab }, '', window.location.href);
+  };
+
+  const handleConfirmExit = () => {
+    setShowExitConfirmModal(false);
+    logout();
+  };
+
+  // If user is not authenticated, show AuthScreen (Login / Register)
+  if (!isAuthenticated) {
+    return <AuthScreen />;
+  }
+
+  // Quick export from header bar
+  const handleQuickExcel = () => {
+    const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const end = new Date();
+    const summary = calculateProfitLoss(start, end, 'Bulan Ini');
+    exportProfitLossToExcel(summary, storeSettings);
+  };
+
+  const handleQuickPDF = () => {
+    const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const end = new Date();
+    const summary = calculateProfitLoss(start, end, 'Bulan Ini');
+    exportProfitLossToPDF(summary, storeSettings);
+  };
+
   return (
     <div className="flex h-screen w-full bg-[#f8fafc] text-[#0f172a] font-sans overflow-hidden">
       {/* Sidebar */}
@@ -149,14 +266,28 @@ function MainApp() {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Geometric Balance Top Header */}
         <header className="h-16 sm:h-20 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-8 no-print shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               id="mobile-menu-toggle-btn"
               onClick={() => setMobileMenuOpen(true)}
               className="lg:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100 shrink-0"
+              title="Buka Menu Navigasi"
             >
               <Menu size={20} />
             </button>
+
+            {menuHistory.length > 1 && (
+              <button
+                id="header-back-btn"
+                onClick={handleGoBack}
+                className="p-1.5 sm:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1.5 shrink-0 text-xs font-semibold cursor-pointer border border-slate-200"
+                title="Kembali ke menu sebelumnya (atau gunakan tombol kembali perangkat)"
+              >
+                <ArrowLeft size={16} className="text-slate-700" />
+                <span className="hidden sm:inline text-xs">Kembali</span>
+              </button>
+            )}
+
             <div className="min-w-0">
               <h2 className="text-base sm:text-lg font-semibold tracking-tight text-slate-900 truncate">
                 {tabTitles[activeTab]?.title}
@@ -257,8 +388,14 @@ function MainApp() {
 
       {/* Confirmation Modal to Exit Application */}
       {showExitConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150 cursor-pointer"
+          onClick={() => setShowExitConfirmModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <span className="w-7 h-7 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center">
@@ -307,6 +444,14 @@ function MainApp() {
           </div>
         </div>
       )}
+
+      {/* Floating Notice Toast when Navigating Back to Previous Menu */}
+      {navNotice && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 text-white px-4 py-2 rounded-full text-xs font-semibold shadow-xl backdrop-blur-xs flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 border border-slate-700 pointer-events-none">
+          <ArrowLeft size={14} className="text-amber-400" />
+          <span>{navNotice}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -314,7 +459,9 @@ function MainApp() {
 export default function App() {
   return (
     <WarungProvider>
-      <MainApp />
+      <ModalProvider>
+        <MainApp />
+      </ModalProvider>
     </WarungProvider>
   );
 }

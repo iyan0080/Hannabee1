@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useRegisterModal } from '../context/ModalContext';
 import { useWarung } from '../context/WarungContext';
 import { ShoppingItem, ShoppingItemPriority, ShoppingItemStatus } from '../types';
 import { formatRupiah, formatDate, openWhatsApp, cleanPhoneNumber } from '../utils/format';
@@ -157,6 +158,13 @@ export const ShoppingListManager: React.FC = () => {
   const [expenseItem, setExpenseItem] = useState<ShoppingItem | null>(null);
   const [expenseActualAmount, setExpenseActualAmount] = useState<number | ''>('');
   const [expensePaymentMethod, setExpensePaymentMethod] = useState<'TUNAI' | 'TRANSFER'>('TUNAI');
+
+  // Register all modals to back button and escape navigation
+  useRegisterModal(showModal, () => setShowModal(false), 'shopping-add-edit-modal');
+  useRegisterModal(showRealizeModal && Boolean(realizeItem), () => { setShowRealizeModal(false); setRealizeItem(null); }, 'shopping-realize-modal');
+  useRegisterModal(showArchiveModal, () => setShowArchiveModal(false), 'shopping-archive-modal');
+  useRegisterModal(showWhatsAppModal, () => setShowWhatsAppModal(false), 'shopping-whatsapp-modal');
+  useRegisterModal(Boolean(expenseItem), () => setExpenseItem(null), 'shopping-expense-modal');
 
   // Data Separation: Active vs Archived
   const activeShoppingItems = useMemo(
@@ -2158,8 +2166,14 @@ export const ShoppingListManager: React.FC = () => {
 
       {/* 5. MODAL KIRIM KE WHATSAPP (Lengkap dengan Pilihan Penerima, Filter, & Preview) */}
       {showWhatsAppModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 flex flex-col max-h-[92vh]">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150 cursor-pointer"
+          onClick={() => setShowWhatsAppModal(false)}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 flex flex-col max-h-[92vh] cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             
             {/* Modal Header */}
             <div className="p-4 bg-emerald-700 text-white flex justify-between items-center shrink-0">
@@ -2454,8 +2468,14 @@ export const ShoppingListManager: React.FC = () => {
 
       {/* 6. Modal Tambah / Edit Catatan Belanja */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150 cursor-pointer"
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
               <h3 className="font-bold text-sm flex items-center gap-2">
                 <ClipboardList size={18} className="text-blue-400" />
@@ -2679,8 +2699,14 @@ export const ShoppingListManager: React.FC = () => {
 
       {/* 7. Modal Catat ke Pengeluaran / Buku Kas Otomatis */}
       {expenseItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150 cursor-pointer"
+          onClick={() => setExpenseItem(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="p-4 bg-emerald-800 text-white flex justify-between items-center">
               <h3 className="font-bold text-sm flex items-center gap-2">
                 <CreditCard size={18} />
@@ -2769,8 +2795,14 @@ export const ShoppingListManager: React.FC = () => {
 
       {/* 8. MODAL CEPAT INPUT HARGA REALISASI BELANJA BAHAN BAKU */}
       {showRealizeModal && realizeItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150 cursor-pointer"
+          onClick={() => { setShowRealizeModal(false); setRealizeItem(null); }}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             {/* Header */}
             <div className="p-4 bg-emerald-800 text-white flex justify-between items-center">
               <div className="flex items-center gap-2.5">
@@ -2969,8 +3001,14 @@ export const ShoppingListManager: React.FC = () => {
 
       {/* 9. MODAL SIMPAN RIWAYAT / HISTORY BELANJA DILENGKAPI TANGGAL BELANJA */}
       {showArchiveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150 cursor-pointer"
+          onClick={() => setShowArchiveModal(false)}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 flex flex-col max-h-[90vh] cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             {/* Modal Header */}
             <div className="p-4 bg-emerald-800 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2.5">

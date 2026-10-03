@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useRegisterModal } from '../context/ModalContext';
 import { useWarung } from '../context/WarungContext';
 import { Customer, CustomerType, DiscountType } from '../types';
 import {
@@ -113,6 +114,14 @@ export const CustomersView: React.FC = () => {
   const [settlingCustomer, setSettlingCustomer] = useState<Customer | null>(null);
   const [settleAmount, setSettleAmount] = useState<number | ''>('');
   const [settleNotes, setSettleNotes] = useState('');
+
+  // Register all modals to back button and escape navigation
+  useRegisterModal(showModal, () => setShowModal(false), 'cust-add-edit-modal');
+  useRegisterModal(Boolean(topUpCustomer), () => setTopUpCustomer(null), 'cust-topup-modal');
+  useRegisterModal(Boolean(historyCustomer), () => setHistoryCustomer(null), 'cust-history-modal');
+  useRegisterModal(Boolean(billCustomer), () => setBillCustomer(null), 'cust-bill-modal');
+  useRegisterModal(Boolean(promoCustomer), () => setPromoCustomer(null), 'cust-promo-modal');
+  useRegisterModal(Boolean(settlingCustomer), () => setSettlingCustomer(null), 'cust-settle-modal');
 
   const filteredCustomers = useMemo(() => {
     return customers.filter(c => {
@@ -609,8 +618,14 @@ export const CustomersView: React.FC = () => {
 
       {/* 1. TOP-UP DEPOSIT MODAL */}
       {topUpCustomer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-slate-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 cursor-pointer"
+          onClick={() => setTopUpCustomer(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-slate-200 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <span className="p-1 bg-emerald-500/20 text-emerald-400 rounded-lg">
@@ -758,8 +773,14 @@ export const CustomersView: React.FC = () => {
 
       {/* 2. DEPOSIT HISTORY MODAL */}
       {historyCustomer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden border border-slate-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 cursor-pointer"
+          onClick={() => setHistoryCustomer(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden border border-slate-200 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
               <div>
                 <h3 className="font-bold text-sm flex items-center gap-1.5">
@@ -870,8 +891,14 @@ export const CustomersView: React.FC = () => {
 
       {/* 3. Add / Edit Customer Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 cursor-pointer"
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
               <h3 className="font-bold text-sm flex items-center gap-1.5">
                 <UserPlus size={16} className="text-blue-400" />
@@ -1080,8 +1107,14 @@ export const CustomersView: React.FC = () => {
 
       {/* 4. WhatsApp Promo Modal */}
       {promoCustomer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 cursor-pointer"
+          onClick={() => setPromoCustomer(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
               <div>
                 <h3 className="font-bold text-sm">Kirim Promosi WhatsApp</h3>
@@ -1135,8 +1168,14 @@ export const CustomersView: React.FC = () => {
 
       {/* 5. Settle Debt Modal */}
       {settlingCustomer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-slate-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 cursor-pointer"
+          onClick={() => setSettlingCustomer(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-slate-200 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
               <h3 className="font-bold text-sm">Pelunasan Kasbon Pelanggan</h3>
               <button onClick={() => setSettlingCustomer(null)} className="text-slate-400 hover:text-white">

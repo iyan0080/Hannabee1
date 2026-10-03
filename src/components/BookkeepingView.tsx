@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useRegisterModal } from '../context/ModalContext';
 import { useWarung } from '../context/WarungContext';
 import {
   formatRupiah,
@@ -121,6 +122,10 @@ export const BookkeepingView: React.FC = () => {
   // Auto-Jurnal POS Interaction State
   const [selectedAutoJournalTrx, setSelectedAutoJournalTrx] = useState<Transaction | null>(null);
   const [isAutoJournalSettingsOpen, setIsAutoJournalSettingsOpen] = useState<boolean>(false);
+
+  // Register popups for back navigation
+  useRegisterModal(isEntryModalOpen, () => setIsEntryModalOpen(false), 'bookkeeping-entry-modal');
+  useRegisterModal(isAutoJournalSettingsOpen, () => setIsAutoJournalSettingsOpen(false), 'bookkeeping-autojournal-modal');
 
   // Cash Closing Calculator State
   const [cashierName, setCashierName] = useState<string>(currentUser?.name || storeSettings.cashierName || 'Kasir');
@@ -1560,8 +1565,14 @@ export const BookkeepingView: React.FC = () => {
       {/* MODAL CATAT KAS MASUK / KELUAR */}
       {/* ========================================================================= */}
       {isEntryModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150">
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setIsEntryModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <div
@@ -1794,8 +1805,14 @@ export const BookkeepingView: React.FC = () => {
       {/* QUICK AUTO-JOURNAL SETTINGS MODAL */}
       {/* ========================================================================= */}
       {isAutoJournalSettingsOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150">
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setIsAutoJournalSettingsOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">

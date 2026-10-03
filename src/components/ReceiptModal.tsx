@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useRegisterModal } from '../context/ModalContext';
 import { Transaction, StoreSettings } from '../types';
 import { formatRupiah, formatDate, generateReceiptWhatsAppText, openWhatsApp, cleanPhoneNumber } from '../utils/format';
 import { HannaBeeLogo } from './HannaBeeLogo';
@@ -15,6 +16,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   storeSettings,
   onClose,
 }) => {
+  useRegisterModal(Boolean(transaction), onClose, 'receipt-modal');
+
   const [copied, setCopied] = useState(false);
   const [recipientPhone, setRecipientPhone] = useState(transaction?.customerPhone || '');
 
@@ -39,8 +42,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const is58mm = storeSettings.paperWidth === '58mm';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto cursor-pointer"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 flex flex-col max-h-[90vh] cursor-default"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Modal Header */}
         <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between no-print">
           <div className="flex items-center gap-2">

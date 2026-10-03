@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useRegisterModal } from '../context/ModalContext';
 import { Tag, Percent, DollarSign, X, Check, Trash2, Gift, Sparkles } from 'lucide-react';
 import { CartItem, DiscountType } from '../types';
 import { formatRupiah } from '../utils/format';
@@ -16,6 +17,8 @@ export const ItemDiscountModal: React.FC<ItemDiscountModalProps> = ({
   item,
   onApplyDiscount,
 }) => {
+  useRegisterModal(isOpen && Boolean(item), onClose, 'item-discount-modal');
+
   const [discountType, setDiscountType] = useState<DiscountType>('PERCENTAGE');
   const [discountValue, setDiscountValue] = useState<number>(0);
 
@@ -58,8 +61,14 @@ export const ItemDiscountModal: React.FC<ItemDiscountModalProps> = ({
   const nominalPresets = [1000, 2000, 3000, 5000, 10000, 20000, 50000];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-scaleUp">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn cursor-pointer"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-scaleUp cursor-default"
+        onClick={e => e.stopPropagation()}
+      >
         
         {/* Header */}
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useRegisterModal } from '../context/ModalContext';
 import { formatRupiah } from '../utils/format';
 import {
   calculateSmartCashSuggestions,
@@ -38,6 +39,8 @@ export const CashCalculatorModal: React.FC<CashCalculatorModalProps> = ({
   currentCashGiven,
   onSelectAmount,
 }) => {
+  useRegisterModal(isOpen, onClose, 'cash-calculator-modal');
+
   // Input formula or numeric buffer
   const [displayValue, setDisplayValue] = useState<string>(
     currentCashGiven > 0 ? String(currentCashGiven) : String(targetAmount)
@@ -172,8 +175,14 @@ export const CashCalculatorModal: React.FC<CashCalculatorModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden border border-slate-200 flex flex-col max-h-[95vh] animate-in fade-in zoom-in-95">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto cursor-pointer"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden border border-slate-200 flex flex-col max-h-[95vh] animate-in fade-in zoom-in-95 cursor-default"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="bg-slate-900 text-white px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-2.5">

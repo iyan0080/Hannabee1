@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useRegisterModal } from '../context/ModalContext';
 import { useWarung } from '../context/WarungContext';
 import { Product, ProductCategory, ProductVariant, PaymentMethod, Customer, Transaction, CustomerType, DiscountType, CartItem } from '../types';
 import { formatRupiah } from '../utils/format';
@@ -131,6 +132,10 @@ export const POSView: React.FC = () => {
 
   // Retroactive Sale Modal State
   const [showRetroactiveModal, setShowRetroactiveModal] = useState<boolean>(false);
+
+  // Register popups for back navigation
+  useRegisterModal(Boolean(variantModalProduct), () => setVariantModalProduct(null), 'pos-variant-modal');
+  useRegisterModal(showAddCustomerModal, () => setShowAddCustomerModal(false), 'pos-add-customer-modal');
 
   // Filtered Products (Exclude archived products)
   const filteredProducts = useMemo(() => {
@@ -1182,8 +1187,14 @@ export const POSView: React.FC = () => {
 
       {/* 1. Modal Variant Selector */}
       {variantModalProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 cursor-pointer"
+          onClick={() => setVariantModalProduct(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
               <div>
                 <span className="text-xs text-emerald-400 font-semibold uppercase tracking-wide">
@@ -1340,8 +1351,14 @@ export const POSView: React.FC = () => {
 
       {/* 2. Quick Customer Modal */}
       {showAddCustomerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-slate-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 cursor-pointer"
+          onClick={() => setShowAddCustomerModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-slate-200 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
               <h3 className="font-bold text-sm flex items-center gap-1.5">
                 <UserPlus size={16} className="text-blue-400" /> Tambah Data Pelanggan Baru

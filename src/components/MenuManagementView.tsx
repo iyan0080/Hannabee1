@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useRegisterModal } from '../context/ModalContext';
 import { useWarung } from '../context/WarungContext';
 import { Product, ProductCategory, ProductVariant } from '../types';
 import { formatRupiah } from '../utils/format';
@@ -65,6 +66,10 @@ export const MenuManagementView: React.FC = () => {
   const [quickCatIcon, setQuickCatIcon] = useState('🍽️');
   const [quickCatColor, setQuickCatColor] = useState('amber');
   const [quickCatError, setQuickCatError] = useState<string | null>(null);
+
+  // Register popups for back navigation
+  useRegisterModal(showModal, () => setShowModal(false), 'menu-product-modal');
+  useRegisterModal(showQuickAddCat, () => setShowQuickAddCat(false), 'menu-quick-cat-modal');
 
   // Dynamic Variants Builder
   const [variants, setVariants] = useState<ProductVariant[]>([]);
@@ -568,8 +573,14 @@ export const MenuManagementView: React.FC = () => {
 
       {/* Add / Edit Product Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden border border-slate-200 max-h-[90vh] flex flex-col">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto cursor-pointer"
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden border border-slate-200 max-h-[90vh] flex flex-col cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
               <h3 className="font-bold text-sm">
                 {editingId ? 'Edit Menu & Produk' : 'Tambah Menu / Produk Baru'}
@@ -840,8 +851,14 @@ export const MenuManagementView: React.FC = () => {
 
       {/* QUICK ADD CATEGORY MODAL */}
       {showQuickAddCat && (
-        <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl p-5 border border-slate-200 animate-in fade-in zoom-in duration-150">
+        <div
+          className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setShowQuickAddCat(false)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-sm w-full shadow-2xl p-5 border border-slate-200 animate-in fade-in zoom-in duration-150 cursor-default"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
                 <span>🏷️</span>
