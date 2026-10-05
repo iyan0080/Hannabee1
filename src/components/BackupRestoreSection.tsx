@@ -508,9 +508,14 @@ export const BackupRestoreSection: React.FC = () => {
                 {localBackupHistory.length > 0 && (
                   <button
                     onClick={() => {
-                      if (confirm('Hapus seluruh riwayat snapshot lokal di HP ini?')) {
-                        clearAllLocalBackups();
+                      const pass = prompt('⚠️ KONFIRMASI PENGHAPUSAN RIWAYAT SNAPSHOT:\n\nMasukkan password otorisasi untuk menghapus seluruh riwayat snapshot lokal di perangkat ini:');
+                      if (pass === null) return;
+                      if (pass !== 'Hannaa1224@') {
+                        alert('Password otorisasi salah! Penghapusan seluruh riwayat dibatalkan.');
+                        return;
                       }
+                      clearAllLocalBackups();
+                      alert('Seluruh riwayat snapshot lokal berhasil dibersihkan.');
                     }}
                     className="px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
                   >

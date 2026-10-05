@@ -26,6 +26,8 @@ import {
   Plus,
   Edit3,
   History,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 export const TransactionsView: React.FC = () => {
@@ -63,11 +65,13 @@ export const TransactionsView: React.FC = () => {
 
   const activeTransactions = filteredTransactions.filter(t => t.status !== 'BATAL');
   const totalFilteredAmount = activeTransactions.reduce((s, t) => {
-    const net = t.status === 'DIRETUR_SEBAGIAN' ? Math.max(0, t.finalAmount - (t.totalReturnedAmount || 0)) : t.finalAmount;
+    const net = Math.max(0, t.finalAmount - (t.totalReturnedAmount || 0));
     return s + net;
   }, 0);
   const totalFilteredProfit = activeTransactions.reduce((s, t) => {
-    const netProfit = t.status === 'DIRETUR_SEBAGIAN' ? Math.max(0, t.grossProfit - (t.totalReturnedAmount || 0) + (t.totalReturnedCost || 0)) : t.grossProfit;
+    const retAmt = t.totalReturnedAmount || 0;
+    const retCost = t.totalReturnedCost || 0;
+    const netProfit = Math.max(0, t.grossProfit - retAmt + retCost);
     return s + netProfit;
   }, 0);
 
@@ -75,10 +79,26 @@ export const TransactionsView: React.FC = () => {
     e.preventDefault();
     if (!settlingTrx) return;
     if (settlingTrx.customerId) {
-      settleCustomerDebt(settlingTrx.customerId, settlingTrx.finalAmount, settleNotes || 'Pelunasan Kasbon Nota ' + settlingTrx.invoiceNumber);
+      const netDebt = Math.max(0, settlingTrx.finalAmount - (settlingTrx.totalReturnedAmount || 0));
+      settleCustomerDebt(settlingTrx.customerId, netDebt, settleNotes || 'Pelunasan Kasbon Nota ' + settlingTrx.invoiceNumber);
     }
     setSettlingTrx(null);
     setSettleNotes('');
+  };
+
+  const [copiedWa, setCopiedWa] = useState(false);
+  const handleCopyTransactionsSummary = () => {
+    let text = `*RINGKASAN TRANSAKSI PENJUALAN - ${storeSettings.storeName.toUpperCase()}*\n`;
+    text += `Waktu: ${new Date().toLocaleDateString('id-ID')}\n`;
+    text += `Total Transaksi: ${filteredTransactions.length}\n`;
+    text += `Total Omzet Bersih: ${formatRupiah(totalFilteredAmount)}\n`;
+    text += `Laba Kotor Bersih: ${formatRupiah(totalFilteredProfit)}\n\n`;
+    text += `_Ringkasan riwayat transaksi POS ${storeSettings.storeName}_`;
+
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedWa(true);
+      setTimeout(() => setCopiedWa(false), 2500);
+    });
   };
 
   const handleDirectWhatsApp = (trx: Transaction) => {
@@ -101,37 +121,38 @@ export const TransactionsView: React.FC = () => {
             </h2>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Total {filteredTransactions.length} transaksi ({formatRupiah(totalFilteredAmount)} omzet aktif)
+            Total {filteredTransactions.length} transaksi ({formatRupiah(totalFilteredAmount)} total omzet setelah dikurangi retur)
           </p>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            id="open-retroactive-sale-btn"
-            onClick={() => setShowRetroactiveModal(true)}
-            className="px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
-          >
-            <History size={15} className="text-teal-200" />
-            <span>+ Input Penjualan Susulan (Kemarin)</span>
-          </button>
-
+        {/* Export Buttons - 1 Kolom (Atas dan Bawah) */}
+        <div className="flex flex-col gap-1.5 w-full sm:w-48 shrink-0">
           <button
             id="export-trx-excel-btn"
             onClick={() => exportTransactionsToExcel(filteredTransactions, storeSettings)}
-            className="px-3.5 py-2 bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
+            className="w-full px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-xl text-xs font-semibold flex items-center justify-center sm:justify-start gap-2 shadow-2xs transition"
           >
-            <FileSpreadsheet size={15} className="text-emerald-700" />
+            <FileSpreadsheet size={14} className="text-emerald-700 shrink-0" />
             <span>Ekspor Excel (.xlsx)</span>
           </button>
 
           <button
             id="export-trx-pdf-btn"
             onClick={() => exportTransactionsToPDF(filteredTransactions, storeSettings, 'Daftar Transaksi')}
-            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
+            className="w-full px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center justify-center sm:justify-start gap-2 shadow-2xs transition"
           >
-            <FileText size={15} className="text-slate-300" />
+            <FileText size={14} className="text-slate-300 shrink-0" />
             <span>Cetak PDF Transaksi</span>
+          </button>
+
+          <button
+            id="export-trx-copy-wa-btn"
+            onClick={handleCopyTransactionsSummary}
+            className="w-full px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center sm:justify-start gap-2 shadow-2xs transition"
+            title="Salin ringkasan transaksi ke WhatsApp"
+          >
+            {copiedWa ? <Check size={14} className="shrink-0" /> : <Copy size={14} className="shrink-0" />}
+            <span>{copiedWa ? 'Tersalin!' : 'Salin ke WA'}</span>
           </button>
         </div>
       </div>
@@ -192,7 +213,7 @@ export const TransactionsView: React.FC = () => {
                 <th className="px-4 py-3">No. Nota & Waktu</th>
                 <th className="px-4 py-3">Pelanggan</th>
                 <th className="px-4 py-3">Item Menu / Varian</th>
-                <th className="px-4 py-3 text-right">Nilai Transaksi</th>
+                <th className="px-4 py-3 text-right">Nilai Transaksi (Setelah Retur)</th>
                 <th className="px-4 py-3 text-right">Laba Kotor</th>
                 <th className="px-4 py-3 text-center">Metode & Status</th>
                 <th className="px-4 py-3 text-center">Aksi</th>
@@ -203,6 +224,9 @@ export const TransactionsView: React.FC = () => {
                 const isKasbon = trx.status === 'BELUM_LUNAS';
                 const isCancelled = trx.status === 'BATAL';
                 const isPartialReturn = trx.status === 'DIRETUR_SEBAGIAN';
+                const returnedAmount = trx.totalReturnedAmount || 0;
+                const hasReturn = returnedAmount > 0 || isPartialReturn;
+                const netTransactionAmount = Math.max(0, trx.finalAmount - returnedAmount);
 
                 return (
                   <tr
@@ -279,16 +303,35 @@ export const TransactionsView: React.FC = () => {
                     </td>
 
                     <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <div className={`font-bold font-mono ${isCancelled ? 'text-red-600 line-through' : 'text-slate-900'}`}>
-                        {formatRupiah(trx.finalAmount)}
-                      </div>
-                      {isPartialReturn && trx.totalReturnedAmount && trx.totalReturnedAmount > 0 && (
-                        <div className="text-[10px] text-indigo-700 font-medium">
-                          Diretur: -{formatRupiah(trx.totalReturnedAmount)}
+                      {isCancelled ? (
+                        <div>
+                          <div className="font-bold font-mono text-red-600 line-through text-sm">
+                            {formatRupiah(trx.finalAmount)}
+                          </div>
+                          <span className="text-[10px] text-red-600 font-semibold bg-red-50 px-1.5 py-0.5 rounded border border-red-200 inline-block mt-0.5">
+                            Rp 0 (Batal)
+                          </span>
+                        </div>
+                      ) : hasReturn && returnedAmount > 0 ? (
+                        <div>
+                          {/* Nominal transaksi setelah dikurangi retur */}
+                          <div className="font-bold font-mono text-slate-900 text-sm">
+                            {formatRupiah(netTransactionAmount)}
+                          </div>
+                          <div className="text-[10px] text-indigo-800 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 inline-block mt-0.5">
+                            Dikurangi Retur: -{formatRupiah(returnedAmount)}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                            <span className="line-through">Awal: {formatRupiah(trx.finalAmount)}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="font-bold font-mono text-slate-900 text-sm">
+                          {formatRupiah(trx.finalAmount)}
                         </div>
                       )}
                       {trx.discount > 0 && (
-                        <div className="text-[10px] text-red-500">Diskon: -{formatRupiah(trx.discount)}</div>
+                        <div className="text-[10px] text-red-500 font-medium mt-0.5">Diskon: -{formatRupiah(trx.discount)}</div>
                       )}
                     </td>
 
@@ -438,9 +481,18 @@ export const TransactionsView: React.FC = () => {
                   <span>Pelanggan:</span>
                   <span className="font-semibold">{settlingTrx.customerName}</span>
                 </div>
-                <div className="flex justify-between text-amber-900 font-bold mt-2 pt-2 border-t border-amber-200">
+                <div className="flex justify-between items-start text-amber-900 font-bold mt-2 pt-2 border-t border-amber-200">
                   <span>Total Tagihan:</span>
-                  <span className="font-mono text-sm">{formatRupiah(settlingTrx.finalAmount)}</span>
+                  <div className="text-right">
+                    <span className="font-mono text-sm">
+                      {formatRupiah(Math.max(0, settlingTrx.finalAmount - (settlingTrx.totalReturnedAmount || 0)))}
+                    </span>
+                    {settlingTrx.totalReturnedAmount && settlingTrx.totalReturnedAmount > 0 && (
+                      <div className="text-[10px] text-indigo-700 font-medium">
+                        (Setelah dikurangi retur: -{formatRupiah(settlingTrx.totalReturnedAmount)})
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

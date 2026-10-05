@@ -70,6 +70,8 @@ import {
   ShoppingBag,
   Receipt,
   Info,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 type BookkeepingTab = 'ledger' | 'closing' | 'cash_flow';
@@ -84,6 +86,9 @@ export const BookkeepingView: React.FC = () => {
     currentUser,
     manualJournals,
     cashClosings,
+    bookkeepingCategories,
+    addBookkeepingCategory,
+    deleteBookkeepingCategory,
     addManualJournalEntry,
     deleteManualJournalEntry,
     addCashClosingRecord,
@@ -108,6 +113,7 @@ export const BookkeepingView: React.FC = () => {
   const [selectedSourceFilter, setSelectedSourceFilter] = useState<SourceFilterOption>('ALL');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [copiedWa, setCopiedWa] = useState(false);
 
   // Modal State for Manual Entry
   const [isEntryModalOpen, setIsEntryModalOpen] = useState<boolean>(false);
@@ -119,6 +125,17 @@ export const BookkeepingView: React.FC = () => {
   const [entryParty, setEntryParty] = useState<string>('');
   const [entryNotes, setEntryNotes] = useState<string>('');
 
+  // Category Management State
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
+  const [categoryModalTab, setCategoryModalTab] = useState<'ALL' | 'KAS_MASUK' | 'KAS_KELUAR'>('ALL');
+  const [newCatName, setNewCatName] = useState<string>('');
+  const [newCatType, setNewCatType] = useState<JournalEntryType>('KAS_MASUK');
+  const [catFeedback, setCatFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Inline Category Addition State inside Manual Entry Modal
+  const [isInlineAddingCategory, setIsInlineAddingCategory] = useState<boolean>(false);
+  const [inlineCategoryName, setInlineCategoryName] = useState<string>('');
+
   // Auto-Jurnal POS Interaction State
   const [selectedAutoJournalTrx, setSelectedAutoJournalTrx] = useState<Transaction | null>(null);
   const [isAutoJournalSettingsOpen, setIsAutoJournalSettingsOpen] = useState<boolean>(false);
@@ -126,6 +143,7 @@ export const BookkeepingView: React.FC = () => {
   // Register popups for back navigation
   useRegisterModal(isEntryModalOpen, () => setIsEntryModalOpen(false), 'bookkeeping-entry-modal');
   useRegisterModal(isAutoJournalSettingsOpen, () => setIsAutoJournalSettingsOpen(false), 'bookkeeping-autojournal-modal');
+  useRegisterModal(isCategoryModalOpen, () => setIsCategoryModalOpen(false), 'bookkeeping-category-modal');
 
   // Cash Closing Calculator State
   const [cashierName, setCashierName] = useState<string>(currentUser?.name || storeSettings.cashierName || 'Kasir');
@@ -427,7 +445,8 @@ export const BookkeepingView: React.FC = () => {
             id="btn-open-income-entry"
             onClick={() => {
               setEntryType('KAS_MASUK');
-              setEntryCategory('Modal Awal / Tambahan Modal');
+              const firstCat = bookkeepingCategories.find(c => c.type === 'KAS_MASUK');
+              setEntryCategory(firstCat ? firstCat.name : 'Modal Awal / Tambahan Modal');
               setIsEntryModalOpen(true);
             }}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-xs transition-colors"
@@ -439,13 +458,26 @@ export const BookkeepingView: React.FC = () => {
             id="btn-open-expense-entry"
             onClick={() => {
               setEntryType('KAS_KELUAR');
-              setEntryCategory('Prive / Penarikan Pemilik');
+              const firstCat = bookkeepingCategories.find(c => c.type === 'KAS_KELUAR');
+              setEntryCategory(firstCat ? firstCat.name : 'Prive / Penarikan Pemilik');
               setIsEntryModalOpen(true);
             }}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold shadow-xs transition-colors"
           >
             <MinusCircle className="w-4 h-4" />
             <span>Kas Keluar</span>
+          </button>
+          <button
+            id="btn-open-category-manager"
+            onClick={() => {
+              setCatFeedback(null);
+              setIsCategoryModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 hover:bg-amber-50 hover:border-amber-300 text-slate-700 hover:text-amber-800 text-sm font-semibold shadow-2xs transition-colors"
+            title="Kelola Kategori Kas Masuk & Kas Keluar"
+          >
+            <Tag className="w-4 h-4 text-amber-600" />
+            <span>Kategori Kas</span>
           </button>
         </div>
       </div>
@@ -664,23 +696,44 @@ export const BookkeepingView: React.FC = () => {
                 ))}
               </div>
 
-              {/* Export Buttons */}
-              <div className="flex items-center gap-2">
+              {/* Export Buttons - 1 Kolom (Atas dan Bawah) */}
+              <div className="flex flex-col gap-1.5 w-full sm:w-36 shrink-0">
                 <button
                   id="btn-export-excel-bookkeeping"
                   onClick={() => exportBookkeepingToExcel(allFilteredEntries, storeSettings, periodLabel)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 text-xs font-semibold transition-colors"
+                  className="w-full flex items-center justify-center sm:justify-start gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 text-xs font-semibold transition-colors shadow-2xs"
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Excel</span>
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Ekspor Excel</span>
                 </button>
                 <button
                   id="btn-export-pdf-bookkeeping"
                   onClick={() => exportBookkeepingToPDF(allFilteredEntries, storeSettings, periodLabel)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 text-xs font-semibold transition-colors"
+                  className="w-full flex items-center justify-center sm:justify-start gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 text-xs font-semibold transition-colors shadow-2xs"
                 >
-                  <Printer className="w-3.5 h-3.5 text-blue-600" />
+                  <Printer className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                   <span>Cetak PDF</span>
+                </button>
+                <button
+                  id="btn-copy-wa-bookkeeping"
+                  onClick={() => {
+                    let text = `*RINGKASAN BUKU KAS - ${storeSettings.storeName.toUpperCase()}*\n`;
+                    text += `Periode: ${periodLabel}\n`;
+                    text += `Total Pemasukan: ${formatRupiah(cashFlowData.cashReceipts)}\n`;
+                    text += `Total Pengeluaran: ${formatRupiah(cashFlowData.cashDisbursements)}\n`;
+                    text += `Arus Kas Bersih: ${formatRupiah(cashFlowData.netCashChange)}\n\n`;
+                    text += `_Dihasilkan oleh POS ${storeSettings.storeName}_`;
+
+                    navigator.clipboard.writeText(text).then(() => {
+                      setCopiedWa(true);
+                      setTimeout(() => setCopiedWa(false), 2500);
+                    });
+                  }}
+                  className="w-full flex items-center justify-center sm:justify-start gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors shadow-2xs"
+                  title="Salin ringkasan buku kas ke WhatsApp"
+                >
+                  {copiedWa ? <Check className="w-3.5 h-3.5 shrink-0" /> : <Copy className="w-3.5 h-3.5 shrink-0" />}
+                  <span>{copiedWa ? 'Tersalin!' : 'Salin ke WA'}</span>
                 </button>
               </div>
             </div>
@@ -1598,7 +1651,10 @@ export const BookkeepingView: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setEntryType('KAS_MASUK');
-                    setEntryCategory('Modal Awal / Tambahan Modal');
+                    const available = bookkeepingCategories.filter(c => c.type === 'KAS_MASUK');
+                    if (!available.some(c => c.name === entryCategory)) {
+                      setEntryCategory(available[0]?.name || 'Modal Awal / Tambahan Modal');
+                    }
                   }}
                   className={`py-2 text-xs font-bold rounded-lg transition-all ${
                     entryType === 'KAS_MASUK' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
@@ -1610,7 +1666,10 @@ export const BookkeepingView: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setEntryType('KAS_KELUAR');
-                    setEntryCategory('Prive / Penarikan Pemilik');
+                    const available = bookkeepingCategories.filter(c => c.type === 'KAS_KELUAR');
+                    if (!available.some(c => c.name === entryCategory)) {
+                      setEntryCategory(available[0]?.name || 'Prive / Penarikan Pemilik');
+                    }
                   }}
                   className={`py-2 text-xs font-bold rounded-lg transition-all ${
                     entryType === 'KAS_KELUAR' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
@@ -1622,31 +1681,120 @@ export const BookkeepingView: React.FC = () => {
 
               {/* Category */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Kategori Pembukuan</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">Kategori Pembukuan</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsInlineAddingCategory(prev => !prev);
+                        setInlineCategoryName('');
+                      }}
+                      className="text-[11px] font-semibold text-amber-700 hover:text-amber-800 flex items-center gap-1 hover:underline"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      <span>{isInlineAddingCategory ? 'Batal Tambah' : '+ Kategori Baru'}</span>
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCatFeedback(null);
+                        setIsCategoryModalOpen(true);
+                      }}
+                      className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 flex items-center gap-1 hover:underline"
+                    >
+                      <Tag className="w-3 h-3" />
+                      <span>Kelola</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Inline Add Category Form */}
+                {isInlineAddingCategory && (
+                  <div className="mb-2 p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-amber-900 flex items-center gap-1">
+                        <Tag className="w-3 h-3" />
+                        Tambah Kategori {entryType === 'KAS_MASUK' ? 'Kas Masuk' : 'Kas Keluar'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsInlineAddingCategory(false);
+                          setInlineCategoryName('');
+                        }}
+                        className="text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder={`Contoh: ${entryType === 'KAS_MASUK' ? 'Bunga Bank, Titipan Barang' : 'Biaya Sewa Tempat, Uang Kebersihan'}...`}
+                        value={inlineCategoryName}
+                        onChange={e => setInlineCategoryName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (inlineCategoryName.trim()) {
+                              const res = addBookkeepingCategory(inlineCategoryName, entryType);
+                              if (res.success && res.category) {
+                                setEntryCategory(res.category.name);
+                                setInlineCategoryName('');
+                                setIsInlineAddingCategory(false);
+                              } else {
+                                alert(res.message);
+                              }
+                            }
+                          }
+                        }}
+                        className="flex-1 px-2.5 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!inlineCategoryName.trim()) return;
+                          const res = addBookkeepingCategory(inlineCategoryName, entryType);
+                          if (res.success && res.category) {
+                            setEntryCategory(res.category.name);
+                            setInlineCategoryName('');
+                            setIsInlineAddingCategory(false);
+                          } else {
+                            alert(res.message);
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shrink-0 transition shadow-2xs"
+                      >
+                        Simpan
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <select
                   value={entryCategory}
-                  onChange={e => setEntryCategory(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                  onChange={e => {
+                    if (e.target.value === '__NEW__') {
+                      setIsInlineAddingCategory(true);
+                    } else {
+                      setEntryCategory(e.target.value);
+                    }
+                  }}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-hidden focus:ring-1 focus:ring-amber-500 font-medium"
                 >
-                  {entryType === 'KAS_MASUK' ? (
-                    <>
-                      <option value="Modal Awal / Tambahan Modal">Modal Awal / Tambahan Modal Usaha</option>
-                      <option value="Pendapatan Lain-lain">Pendapatan Lain-lain (Komisi/Titipan/Cashback)</option>
-                      <option value="Pelunasan Kasbon">Pelunasan Piutang / Kasbon Lama</option>
-                      <option value="Top-Up Saldo Deposit">Top-Up Saldo Deposit</option>
-                      <option value="Pengembalian Biaya (Refund)">Pengembalian Biaya / Refund Masuk</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="Prive / Penarikan Pemilik">Prive / Penarikan Kas Pemilik</option>
-                      <option value="Setor Kas ke Bank">Setor Kas Fisik ke Rekening Bank</option>
-                      <option value="Pembelian Aset / Perlengkapan">Pembelian Peralatan / Aset Warung</option>
-                      <option value="Belanja Bahan Baku">Belanja Bahan Baku Tambahan</option>
-                      <option value="Operasional & Listrik">Operasional, Gas & Listrik</option>
-                      <option value="Gaji & Uang Makan Karyawan">Gaji / Upah / Bonus Karyawan</option>
-                      <option value="Pengeluaran Lain-lain">Pengeluaran Lain-lain / Tak Terduga</option>
-                    </>
-                  )}
+                  {bookkeepingCategories
+                    .filter(c => c.type === entryType)
+                    .map(cat => (
+                      <option key={cat.id} value={cat.name}>
+                        {cat.name} {!cat.isSystem ? '(Kustom)' : ''}
+                      </option>
+                    ))}
+                  <option value="__NEW__" className="text-amber-600 font-bold">
+                    + Tambah Kategori Baru...
+                  </option>
                 </select>
               </div>
 
@@ -2003,6 +2151,256 @@ export const BookkeepingView: React.FC = () => {
               <button
                 onClick={() => setSelectedAutoJournalTrx(null)}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Kelola Kategori Pembukuan Kas */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                  <Tag className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Kelola Kategori Pembukuan Kas</h3>
+                  <p className="text-xs text-slate-500">
+                    Atur kategori kas masuk (+ Debit) & kas keluar (- Kredit) warung Anda
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Notification Feedback */}
+            {catFeedback && (
+              <div
+                className={`p-3 rounded-xl text-xs flex items-center justify-between ${
+                  catFeedback.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    : 'bg-rose-50 text-rose-800 border border-rose-200'
+                }`}
+              >
+                <span>{catFeedback.message}</span>
+                <button onClick={() => setCatFeedback(null)} className="text-slate-400 hover:text-slate-600 ml-2">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Form Tambah Kategori Baru */}
+            <div className="bg-slate-50 p-3.5 sm:p-4 rounded-xl border border-slate-200 space-y-3">
+              <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <PlusCircle className="w-4 h-4 text-amber-600" />
+                Tambah Kategori Pembukuan Baru
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                {/* Type Selection */}
+                <div className="sm:col-span-4">
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Jenis Kas</label>
+                  <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-200/70 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setNewCatType('KAS_MASUK')}
+                      className={`py-1.5 text-[11px] font-bold rounded-md transition ${
+                        newCatType === 'KAS_MASUK'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      + Masuk
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewCatType('KAS_KELUAR')}
+                      className={`py-1.5 text-[11px] font-bold rounded-md transition ${
+                        newCatType === 'KAS_KELUAR'
+                          ? 'bg-rose-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      - Keluar
+                    </button>
+                  </div>
+                </div>
+
+                {/* Name Input */}
+                <div className="sm:col-span-5">
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Nama Kategori</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Sewa Tempat, Uang Sampah..."
+                    value={newCatName}
+                    onChange={e => setNewCatName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (newCatName.trim()) {
+                          const res = addBookkeepingCategory(newCatName, newCatType);
+                          setCatFeedback({
+                            type: res.success ? 'success' : 'error',
+                            message: res.message,
+                          });
+                          if (res.success) setNewCatName('');
+                        }
+                      }
+                    }}
+                    className="w-full px-3 py-1.5 text-xs bg-white rounded-lg border border-slate-300 focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* Submit Button */}
+                <div className="sm:col-span-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newCatName.trim()) {
+                        setCatFeedback({ type: 'error', message: 'Silakan isi nama kategori terlebih dahulu.' });
+                        return;
+                      }
+                      const res = addBookkeepingCategory(newCatName, newCatType);
+                      setCatFeedback({
+                        type: res.success ? 'success' : 'error',
+                        message: res.message,
+                      });
+                      if (res.success) setNewCatName('');
+                    }}
+                    className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg shadow-xs transition flex items-center justify-center gap-1.5"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>Tambah</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Tabs & Category List */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setCategoryModalTab('ALL')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                      categoryModalTab === 'ALL'
+                        ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Semua ({bookkeepingCategories.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCategoryModalTab('KAS_MASUK')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1 ${
+                      categoryModalTab === 'KAS_MASUK'
+                        ? 'bg-emerald-600 text-white shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>Kas Masuk</span>
+                    <span className="text-[10px] px-1.5 py-0.2 bg-emerald-700/50 rounded-full">
+                      {bookkeepingCategories.filter(c => c.type === 'KAS_MASUK').length}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCategoryModalTab('KAS_KELUAR')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1 ${
+                      categoryModalTab === 'KAS_KELUAR'
+                        ? 'bg-rose-600 text-white shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>Kas Keluar</span>
+                    <span className="text-[10px] px-1.5 py-0.2 bg-rose-700/50 rounded-full">
+                      {bookkeepingCategories.filter(c => c.type === 'KAS_KELUAR').length}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* List */}
+              <div className="max-h-64 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 bg-white">
+                {bookkeepingCategories
+                  .filter(c => (categoryModalTab === 'ALL' ? true : c.type === categoryModalTab))
+                  .map(cat => (
+                    <div
+                      key={cat.id}
+                      className="p-2.5 sm:px-3.5 flex items-center justify-between hover:bg-slate-50 transition gap-2"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${
+                            cat.type === 'KAS_MASUK' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                          }`}
+                        >
+                          {cat.type === 'KAS_MASUK' ? (
+                            <ArrowDownLeft className="w-3.5 h-3.5" />
+                          ) : (
+                            <ArrowUpRight className="w-3.5 h-3.5" />
+                          )}
+                        </div>
+                        <div className="truncate">
+                          <p className="text-xs font-bold text-slate-800 truncate">{cat.name}</p>
+                          <p className="text-[10px] text-slate-400">
+                            {cat.type === 'KAS_MASUK' ? 'Kas Masuk (+)' : 'Kas Keluar (-)'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {cat.isSystem ? (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md">
+                            Bawaan
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md">
+                            Kustom
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Hapus kategori "${cat.name}"?`)) {
+                              const res = deleteBookkeepingCategory(cat.id);
+                              setCatFeedback({
+                                type: res.success ? 'success' : 'error',
+                                message: res.message,
+                              });
+                            }
+                          }}
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                          title="Hapus Kategori"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition"
               >
                 Tutup
               </button>

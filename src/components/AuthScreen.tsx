@@ -3,11 +3,8 @@ import { useWarung } from '../context/WarungContext';
 import { HannaBeeLogo } from './HannaBeeLogo';
 import {
   Mail,
-  Lock,
   User,
   Phone,
-  Eye,
-  EyeOff,
   ArrowRight,
   ShieldCheck,
   CheckCircle2,
@@ -23,11 +20,8 @@ export const AuthScreen: React.FC = () => {
 
   // Form Fields
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
 
   // State
   const [errorMsg, setErrorMsg] = useState('');
@@ -50,11 +44,6 @@ export const AuthScreen: React.FC = () => {
       return;
     }
 
-    if (!password) {
-      setErrorMsg('Silakan masukkan password pilihan Anda.');
-      return;
-    }
-
     setLoading(true);
 
     setTimeout(() => {
@@ -65,22 +54,10 @@ export const AuthScreen: React.FC = () => {
           return;
         }
 
-        if (password.length < 4) {
-          setErrorMsg('Password minimal terdiri dari 4 karakter.');
-          setLoading(false);
-          return;
-        }
-
-        if (password !== confirmPassword) {
-          setErrorMsg('Konfirmasi password tidak cocok dengan password yang dimasukkan.');
-          setLoading(false);
-          return;
-        }
-
         const res = registerUser({
           name: fullName.trim(),
           email: cleanEmail,
-          password: password.trim(),
+          password: '',
           phone: phoneNumber.trim(),
         });
 
@@ -91,7 +68,7 @@ export const AuthScreen: React.FC = () => {
           setSuccessMsg('Akun berhasil dibuat! Mengalihkan ke sistem...');
         }
       } else {
-        const res = login(cleanEmail, password.trim());
+        const res = login(cleanEmail);
         if (!res.success) {
           setErrorMsg(res.message || 'Login gagal.');
           setLoading(false);
@@ -99,15 +76,14 @@ export const AuthScreen: React.FC = () => {
           setSuccessMsg('Login berhasil! Selamat datang.');
         }
       }
-    }, 400);
+    }, 300);
   };
 
-  const handleQuickLogin = (demoEmail: string, demoPass: string) => {
+  const handleQuickLogin = (demoEmail: string) => {
     setEmail(demoEmail);
-    setPassword(demoPass);
     setErrorMsg('');
     setSuccessMsg('');
-    const res = login(demoEmail, demoPass);
+    const res = login(demoEmail);
     if (!res.success) {
       setErrorMsg(res.message || 'Login gagal.');
     }
@@ -257,55 +233,11 @@ export const AuthScreen: React.FC = () => {
             </div>
           )}
 
-          {/* Password Field */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-slate-700">
-                Password Pilihan Anda <span className="text-red-500">*</span>
-              </label>
-              <span className="text-[11px] text-slate-400">
-                {isRegisterMode ? 'Min. 4 karakter' : ''}
-              </span>
-            </div>
-            <div className="relative">
-              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                id="auth-password-input"
-                type={showPassword ? 'text' : 'password'}
-                required
-                placeholder="Masukkan password..."
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          </div>
-
-          {/* Register: Confirm Password */}
-          {isRegisterMode && (
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Ulangi Password <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  id="auth-confirm-password-input"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  placeholder="Ketik ulang password..."
-                  value={confirmPassword}
-                  onChange={e => setConfirmPassword(e.target.value)}
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                />
-              </div>
+          {/* Password-Free Info Note in Login Mode */}
+          {!isRegisterMode && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center gap-2">
+              <Sparkles size={16} className="shrink-0 text-amber-600" />
+              <span>Password telah dinonaktifkan. Anda dapat langsung masuk hanya dengan memilih akun atau memasukkan email Gmail.</span>
             </div>
           )}
 
@@ -324,7 +256,7 @@ export const AuthScreen: React.FC = () => {
             ) : isRegisterMode ? (
               <>
                 <UserPlus size={16} />
-                <span>Buat Akun & Masuk</span>
+                <span>Buat Akun & Masuk Langsung</span>
               </>
             ) : (
               <>
@@ -339,49 +271,27 @@ export const AuthScreen: React.FC = () => {
         {/* Quick Demo Access Bar */}
         {!isRegisterMode && (
           <div className="px-6 sm:px-8 pb-7 pt-2 border-t border-slate-100 bg-slate-50/50">
-            <p className="text-[11px] font-semibold text-slate-500 mb-2.5 flex items-center gap-1.5">
+            <p className="text-[11px] font-semibold text-slate-600 mb-2.5 flex items-center gap-1.5">
               <Sparkles size={13} className="text-amber-500" />
-              <span>Akses Cepat (Pilih Akun Masuk):</span>
+              <span>Pilih Akun (Masuk 1-Klik Tanpa Password):</span>
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <button
-                type="button"
-                id="quick-login-hanna"
-                onClick={() => handleQuickLogin('hannaalmahyra24@gmail.com', 'hanna123')}
-                className="p-2.5 bg-white border border-slate-200 hover:border-amber-400 hover:bg-amber-50/40 rounded-xl text-left transition text-xs shadow-2xs group"
-              >
-                <div className="font-bold text-slate-800 flex items-center justify-between">
-                  <span className="text-amber-700">Hanna (Owner)</span>
-                </div>
-                <div className="text-[10px] text-slate-400 font-mono truncate">hannaalmahyra24@gmail.com</div>
-                <div className="text-[10px] text-amber-600 font-medium mt-1">Klik Masuk →</div>
-              </button>
-
-              <button
-                type="button"
-                id="quick-login-iyan"
-                onClick={() => handleQuickLogin('iyan0080@gmail.com', 'password123')}
-                className="p-2.5 bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 rounded-xl text-left transition text-xs shadow-2xs group"
-              >
-                <div className="font-bold text-slate-800 flex items-center justify-between">
-                  <span className="text-blue-700">IYAN (Admin 1)</span>
-                </div>
-                <div className="text-[10px] text-slate-400 font-mono truncate">iyan0080@gmail.com</div>
-                <div className="text-[10px] text-blue-600 font-medium mt-1">Klik Masuk →</div>
-              </button>
-
-              <button
-                type="button"
-                id="quick-login-juni"
-                onClick={() => handleQuickLogin('juni.bid89@gmail.com', 'juni123')}
-                className="p-2.5 bg-white border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/40 rounded-xl text-left transition text-xs shadow-2xs group"
-              >
-                <div className="font-bold text-slate-800 flex items-center justify-between">
-                  <span className="text-emerald-700">JUNI (Admin 2)</span>
-                </div>
-                <div className="text-[10px] text-slate-400 font-mono truncate">juni.bid89@gmail.com</div>
-                <div className="text-[10px] text-emerald-600 font-medium mt-1">Klik Masuk →</div>
-              </button>
+              {users.filter(u => u.isActive).map(u => (
+                <button
+                  key={u.id}
+                  type="button"
+                  id={`quick-login-${u.id}`}
+                  onClick={() => handleQuickLogin(u.email)}
+                  className="p-2.5 bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 rounded-xl text-left transition text-xs shadow-2xs group"
+                >
+                  <div className="font-bold text-slate-800 flex items-center gap-1.5 truncate">
+                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${u.avatarColor || 'bg-blue-600'}`} />
+                    <span className="truncate">{u.name}</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono truncate">{u.email}</div>
+                  <div className="text-[10px] text-blue-600 font-semibold mt-1 group-hover:underline">Masuk Langsung →</div>
+                </button>
+              ))}
             </div>
           </div>
         )}

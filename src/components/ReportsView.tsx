@@ -4,23 +4,14 @@ import { ProfitLossReport } from './ProfitLossReport';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { DailyMenuSalesReport } from './DailyMenuSalesReport';
 import { TransactionsView } from './TransactionsView';
-import { ExpensesView } from './ExpensesView';
-import { exportProfitLossToExcel, exportProfitLossToPDF, exportTransactionsToExcel, exportTransactionsToPDF } from '../utils/exportData';
 import {
   FileSpreadsheet,
   TrendingUp,
   Receipt,
-  ArrowDownCircle,
-  Download,
-  Calendar,
-  Layers,
-  FileText,
-  DollarSign,
-  PieChart,
   UtensilsCrossed,
 } from 'lucide-react';
 
-export type ReportSubTab = 'profit_loss' | 'daily_menu_sales' | 'analytics' | 'transactions' | 'expenses';
+export type ReportSubTab = 'profit_loss' | 'daily_menu_sales' | 'analytics' | 'transactions';
 
 interface ReportsViewProps {
   initialSubTab?: ReportSubTab;
@@ -28,22 +19,7 @@ interface ReportsViewProps {
 
 export const ReportsView: React.FC<ReportsViewProps> = ({ initialSubTab = 'profit_loss' }) => {
   const [activeSubTab, setActiveSubTab] = useState<ReportSubTab>(initialSubTab);
-  const { storeSettings, calculateProfitLoss, transactions, expenses } = useWarung();
-
-  // Quick export handlers
-  const handleExportPLMonthExcel = () => {
-    const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const end = new Date();
-    const summary = calculateProfitLoss(start, end, 'Bulan Ini');
-    exportProfitLossToExcel(summary, storeSettings);
-  };
-
-  const handleExportPLMonthPDF = () => {
-    const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const end = new Date();
-    const summary = calculateProfitLoss(start, end, 'Bulan Ini');
-    exportProfitLossToPDF(summary, storeSettings);
-  };
+  const { transactions } = useWarung();
 
   const unpaidDebtCount = transactions.filter(t => t.status === 'BELUM_LUNAS').length;
 
@@ -77,13 +53,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialSubTab = 'profi
       color: 'text-amber-600',
       badge: unpaidDebtCount > 0 ? `${unpaidDebtCount} Bon` : undefined,
     },
-    {
-      id: 'expenses' as ReportSubTab,
-      label: 'Buku Pengeluaran',
-      desc: 'Biaya Bahan Baku & Operasional',
-      icon: <ArrowDownCircle size={16} />,
-      color: 'text-rose-600',
-    },
   ];
 
   return (
@@ -106,29 +75,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialSubTab = 'profi
                   </p>
                 </div>
               </div>
-            </div>
-
-            {/* Quick Master Export Buttons */}
-            <div className="flex items-center gap-2">
-              <button
-                id="report-hub-export-excel"
-                onClick={handleExportPLMonthExcel}
-                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs"
-                title="Unduh Laporan Laba Rugi Bulan Ini dalam format Excel"
-              >
-                <FileSpreadsheet size={14} className="text-emerald-700" />
-                <span>Unduh Excel Bulan Ini</span>
-              </button>
-
-              <button
-                id="report-hub-export-pdf"
-                onClick={handleExportPLMonthPDF}
-                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs"
-                title="Cetak/Unduh Laporan Laba Rugi Bulan Ini dalam format PDF"
-              >
-                <FileText size={14} className="text-slate-300" />
-                <span>Cetak PDF Laba Rugi</span>
-              </button>
             </div>
           </div>
 
@@ -169,7 +115,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialSubTab = 'profi
         {activeSubTab === 'daily_menu_sales' && <DailyMenuSalesReport />}
         {activeSubTab === 'analytics' && <AnalyticsDashboard />}
         {activeSubTab === 'transactions' && <TransactionsView />}
-        {activeSubTab === 'expenses' && <ExpensesView />}
       </div>
     </div>
   );

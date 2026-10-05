@@ -11,8 +11,7 @@ import { CustomersView } from './components/CustomersView';
 import { UserManagementView } from './components/UserManagementView';
 import { SettingsView } from './components/SettingsView';
 import { AuthScreen } from './components/AuthScreen';
-import { exportProfitLossToExcel, exportProfitLossToPDF } from './utils/exportData';
-import { Menu, Plus, FileSpreadsheet, FileText, ShoppingCart, BarChart3, LogOut, UserCheck, AlertTriangle, X, Check, ArrowLeft } from 'lucide-react';
+import { Menu, Plus, ShoppingCart, BarChart3, LogOut, UserCheck, AlertTriangle, X, Check, ArrowLeft } from 'lucide-react';
 
 function MainApp() {
   const { closeTopModal, hasOpenModal } = useModal();
@@ -27,7 +26,7 @@ function MainApp() {
   const mobileMenuOpenRef = useRef<boolean>(false);
   const showExitConfirmModalRef = useRef<boolean>(false);
 
-  const { storeSettings, calculateProfitLoss, isAuthenticated, currentUser, logout } = useWarung();
+  const { isAuthenticated, currentUser, logout } = useWarung();
 
   // Register mobile drawer and exit confirm modal with ModalContext
   useRegisterModal(mobileMenuOpen, () => setMobileMenuOpen(false), 'app-mobile-menu-drawer');
@@ -78,7 +77,7 @@ function MainApp() {
     },
     users: {
       title: 'Manajemen Pengguna',
-      subtitle: 'Kelola akun pengguna, login Gmail, dan pengaturan password staf warung',
+      subtitle: 'Kelola akun pengguna, login Gmail, dan hak akses bebas password staf warung',
     },
     settings: {
       title: 'Pengaturan Usaha',
@@ -237,21 +236,6 @@ function MainApp() {
     return <AuthScreen />;
   }
 
-  // Quick export from header bar
-  const handleQuickExcel = () => {
-    const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const end = new Date();
-    const summary = calculateProfitLoss(start, end, 'Bulan Ini');
-    exportProfitLossToExcel(summary, storeSettings);
-  };
-
-  const handleQuickPDF = () => {
-    const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const end = new Date();
-    const summary = calculateProfitLoss(start, end, 'Bulan Ini');
-    exportProfitLossToPDF(summary, storeSettings);
-  };
-
   return (
     <div className="flex h-screen w-full bg-[#f8fafc] text-[#0f172a] font-sans overflow-hidden">
       {/* Sidebar */}
@@ -300,26 +284,6 @@ function MainApp() {
 
           {/* Quick Header Actions & User Info */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <button
-              id="header-excel-btn"
-              onClick={handleQuickExcel}
-              className="px-3 py-1.5 sm:px-4 sm:py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 hover:bg-slate-50 text-slate-700 shadow-2xs transition"
-              title="Ekspor Laporan Laba Rugi Bulan Ini ke Excel"
-            >
-              <FileSpreadsheet size={14} className="text-emerald-600" />
-              <span className="hidden md:inline">Unduh Excel</span>
-            </button>
-
-            <button
-              id="header-pdf-btn"
-              onClick={handleQuickPDF}
-              className="px-3 py-1.5 sm:px-4 sm:py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 hover:bg-slate-50 text-slate-700 shadow-2xs transition"
-              title="Cetak Laporan Laba Rugi Bulan Ini ke PDF"
-            >
-              <FileText size={14} className="text-red-500" />
-              <span className="hidden md:inline">Cetak PDF</span>
-            </button>
-
             {activeTab !== 'pos' ? (
               <button
                 id="header-new-sale-btn"

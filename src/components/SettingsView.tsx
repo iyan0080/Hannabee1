@@ -21,6 +21,12 @@ import {
   Mail,
   Trash2,
   Download,
+  Lock,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  X,
+  ShieldAlert,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -38,6 +44,12 @@ export const SettingsView: React.FC = () => {
 
   const [formData, setFormData] = useState<StoreSettings>({ ...storeSettings });
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // Security password modal for database reset and data deletion
+  const [resetModalType, setResetModalType] = useState<'SALES_CASH' | 'ALL_DATABASE' | null>(null);
+  const [resetPasswordInput, setResetPasswordInput] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetErrorMsg, setResetErrorMsg] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -426,14 +438,10 @@ export const SettingsView: React.FC = () => {
           <button
             id="reset-sales-cash-btn"
             onClick={() => {
-              if (
-                confirm(
-                  '⚠️ KONFIRMASI PEMBERSIHAN KAS & PENJUALAN:\n\nApakah Anda yakin ingin menghapus seluruh riwayat transaksi penjualan kasir, beban pengeluaran, mutasi kas manual, dan rekonsiliasi tutup kas?\n\nCATATAN AMAN: Katalog produk/menu makanan/minuman dan daftar pelanggan Anda TETAP UTUH dan aman.'
-                )
-              ) {
-                clearSalesAndCashData();
-                alert('Berhasil! Seluruh data transaksi penjualan kasir, beban pengeluaran, dan buku kas telah dibersihkan baik dari memori perangkat maupun Cloud Firestore. Data menu & pelanggan tetap aman tersimpan.');
-              }
+              setResetModalType('SALES_CASH');
+              setResetPasswordInput('');
+              setResetErrorMsg('');
+              setShowResetPassword(false);
             }}
             className="w-full sm:w-auto px-5 py-3 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl flex items-center justify-center gap-2.5 font-bold text-xs transition"
           >
@@ -444,14 +452,10 @@ export const SettingsView: React.FC = () => {
           <button
             id="reset-sample-data-btn"
             onClick={() => {
-              if (
-                confirm(
-                  '⚠️ PERINGATAN RESET TOTAL:\n\nApakah Anda yakin ingin mengosongkan SELURUH database (termasuk produk, transaksi, kas, dan pelanggan)?\n\nTindakan ini tidak dapat dibatalkan.'
-                )
-              ) {
-                clearAllDatabase();
-                alert('Semua data database telah berhasil dikosongkan. Database warung Anda sekarang bersih dan siap digunakan!');
-              }
+              setResetModalType('ALL_DATABASE');
+              setResetPasswordInput('');
+              setResetErrorMsg('');
+              setShowResetPassword(false);
             }}
             className="w-full sm:w-auto px-5 py-3 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl flex items-center justify-center gap-2.5 font-bold text-xs transition"
           >
@@ -460,6 +464,178 @@ export const SettingsView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Security Password Modal for Database Reset / Data Deletion */}
+      {resetModalType && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200">
+            {/* Header */}
+            <div className={`p-4 sm:p-5 text-white flex items-center justify-between ${
+              resetModalType === 'ALL_DATABASE' ? 'bg-red-600' : 'bg-amber-600'
+            }`}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                  <ShieldAlert size={20} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm">
+                    {resetModalType === 'ALL_DATABASE'
+                      ? 'Otorisasi Reset Total Database'
+                      : 'Otorisasi Hapus Data Kas & Penjualan'}
+                  </h3>
+                  <p className="text-[11px] text-white/80">
+                    Konfirmasi Keamanan & Password Otorisasi
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setResetModalType(null);
+                  setResetPasswordInput('');
+                  setResetErrorMsg('');
+                }}
+                className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setResetErrorMsg('');
+
+                if (!resetPasswordInput) {
+                  setResetErrorMsg('Silakan masukkan password otorisasi.');
+                  return;
+                }
+
+                if (resetModalType === 'SALES_CASH') {
+                  const res = clearSalesAndCashData(resetPasswordInput.trim());
+                  if (!res.success) {
+                    setResetErrorMsg(res.message);
+                    return;
+                  }
+                  setResetModalType(null);
+                  setResetPasswordInput('');
+                  alert(res.message);
+                } else if (resetModalType === 'ALL_DATABASE') {
+                  const res = clearAllDatabase(resetPasswordInput.trim());
+                  if (!res.success) {
+                    setResetErrorMsg(res.message);
+                    return;
+                  }
+                  setResetModalType(null);
+                  setResetPasswordInput('');
+                  alert(res.message);
+                }
+              }}
+              className="p-5 sm:p-6 space-y-4 text-xs"
+            >
+              {/* Warning Notice Box */}
+              <div className={`p-3.5 rounded-2xl border text-xs leading-relaxed ${
+                resetModalType === 'ALL_DATABASE'
+                  ? 'bg-red-50 border-red-200 text-red-900'
+                  : 'bg-amber-50 border-amber-200 text-amber-900'
+              }`}>
+                {resetModalType === 'ALL_DATABASE' ? (
+                  <>
+                    <p className="font-bold mb-1 flex items-center gap-1.5 text-red-700">
+                      <span>⚠️</span>
+                      <span>PERINGATAN RESET TOTAL DATABASE</span>
+                    </p>
+                    <p className="text-[11px] text-red-800">
+                      Tindakan ini akan mengosongkan <strong>SELURUH</strong> data warung (produk/menu, kategori, transaksi penjualan, catatan kas, saldo deposit, data pelanggan, dan catatan belanja) dari perangkat ini dan Cloud Firestore. Tindakan ini <strong>tidak dapat dibatalkan</strong>.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-bold mb-1 flex items-center gap-1.5 text-amber-800">
+                      <span>⚠️</span>
+                      <span>PEMBERSIHAN DATA KAS & TRANSAKSI</span>
+                    </p>
+                    <p className="text-[11px] text-amber-800">
+                      Seluruh riwayat transaksi penjualan kasir, beban pengeluaran, mutasi kas manual, dan rekonsiliasi tutup kas akan dihapus dari memori dan Cloud Firestore. <strong>Katalog produk/menu dan daftar pelanggan tetap aman tersimpan.</strong>
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {/* Error Feedback */}
+              {resetErrorMsg && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2 animate-shake">
+                  <AlertCircle size={16} className="shrink-0 text-rose-600 mt-0.5" />
+                  <span className="font-medium">{resetErrorMsg}</span>
+                </div>
+              )}
+
+              {/* Password Input Field */}
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                  Password Otorisasi <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="reset-database-password-input"
+                    type={showResetPassword ? 'text' : 'password'}
+                    required
+                    placeholder="Masukkan password otorisasi..."
+                    value={resetPasswordInput}
+                    onChange={(e) => {
+                      setResetPasswordInput(e.target.value);
+                      if (resetErrorMsg) setResetErrorMsg('');
+                    }}
+                    className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetPassword(!showResetPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  >
+                    {showResetPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Masukkan password pemilik warung untuk mengonfirmasi tindakan ini.
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="pt-2 flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetModalType(null);
+                    setResetPasswordInput('');
+                    setResetErrorMsg('');
+                  }}
+                  className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition"
+                >
+                  Batal
+                </button>
+                <button
+                  id="confirm-reset-submit-btn"
+                  type="submit"
+                  disabled={!resetPasswordInput.trim()}
+                  className={`flex-1 py-2.5 px-4 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
+                    resetModalType === 'ALL_DATABASE'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-amber-600 hover:bg-amber-700'
+                  }`}
+                >
+                  <Trash2 size={14} />
+                  <span>
+                    {resetModalType === 'ALL_DATABASE' ? 'Reset Total Sekarang' : 'Hapus Data Kas & Jual'}
+                  </span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

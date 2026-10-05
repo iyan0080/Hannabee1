@@ -239,22 +239,32 @@ export function exportTransactionsToPDF(transactions: Transaction[], store: Stor
   doc.setTextColor(100, 100, 100);
   doc.text(`Waktu Cetak: ${formatDate(new Date().toISOString())} | Total Data: ${transactions.length} transaksi`, 14, 22);
 
-  const tableRows = transactions.map((t, idx) => [
-    idx + 1,
-    t.invoiceNumber,
-    formatDate(t.timestamp),
-    t.customerName || 'Umum',
-    t.items.map(i => `${i.productName} (${i.quantity})`).join(', '),
-    formatRupiah(t.finalAmount),
-    formatRupiah(t.totalCost),
-    formatRupiah(t.grossProfit),
-    t.paymentMethod,
-    t.status,
-  ]);
+  const tableRows = transactions.map((t, idx) => {
+    const retAmt = t.totalReturnedAmount || 0;
+    const netAmt = t.status === 'BATAL' ? 0 : Math.max(0, t.finalAmount - retAmt);
+    const amountStr = t.status === 'BATAL'
+      ? 'Rp 0 (Batal)'
+      : retAmt > 0
+      ? `${formatRupiah(netAmt)} (Retur: -${formatRupiah(retAmt)})`
+      : formatRupiah(t.finalAmount);
+
+    return [
+      idx + 1,
+      t.invoiceNumber,
+      formatDate(t.timestamp),
+      t.customerName || 'Umum',
+      t.items.map(i => `${i.productName} (${i.quantity})`).join(', '),
+      amountStr,
+      formatRupiah(t.totalCost),
+      formatRupiah(t.status === 'BATAL' ? 0 : Math.max(0, t.grossProfit - retAmt + (t.totalReturnedCost || 0))),
+      t.paymentMethod,
+      t.status,
+    ];
+  });
 
   autoTable(doc, {
     startY: 26,
-    head: [['No', 'Nota', 'Tanggal', 'Pelanggan', 'Item Menu', 'Total (Rp)', 'HPP (Rp)', 'Laba (Rp)', 'Metode', 'Status']],
+    head: [['No', 'Nota', 'Tanggal', 'Pelanggan', 'Item Menu', 'Total Bersih (Rp)', 'HPP (Rp)', 'Laba (Rp)', 'Metode', 'Status']],
     body: tableRows,
     theme: 'striped',
     headStyles: { fillColor: [15, 118, 110], fontSize: 8 },

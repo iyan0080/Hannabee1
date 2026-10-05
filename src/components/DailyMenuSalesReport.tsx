@@ -516,35 +516,35 @@ export const DailyMenuSalesReport: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Action Export Buttons */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Quick Action Export Buttons - 1 Kolom (Atas dan Bawah) */}
+          <div className="flex flex-col gap-1.5 w-full sm:w-44 shrink-0">
             <button
               id="menu-report-export-excel"
               onClick={handleExportExcel}
-              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs"
+              className="w-full px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center sm:justify-start gap-2 transition shadow-2xs"
               title="Unduh data penjualan menu & varian ke Excel"
             >
-              <FileSpreadsheet size={14} className="text-emerald-700" />
+              <FileSpreadsheet size={14} className="text-emerald-700 shrink-0" />
               <span>Ekspor Excel</span>
             </button>
 
             <button
               id="menu-report-export-pdf"
               onClick={handleExportPDF}
-              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs"
+              className="w-full px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center sm:justify-start gap-2 transition shadow-2xs"
               title="Cetak format PDF rapi"
             >
-              <FileText size={14} className="text-slate-300" />
+              <FileText size={14} className="text-slate-300 shrink-0" />
               <span>Cetak PDF</span>
             </button>
 
             <button
               id="menu-report-copy-wa"
               onClick={handleCopyWhatsAppSummary}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs"
+              className="w-full px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center sm:justify-start gap-2 transition shadow-2xs"
               title="Salin rekap ke teks WhatsApp"
             >
-              {copiedWa ? <Check size={14} /> : <Copy size={14} />}
+              {copiedWa ? <Check size={14} className="shrink-0" /> : <Copy size={14} className="shrink-0" />}
               <span>{copiedWa ? 'Tersalin!' : 'Salin ke WA'}</span>
             </button>
           </div>

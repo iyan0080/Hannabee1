@@ -28,6 +28,8 @@ import {
   LocalAutoBackupRecord,
   AutoBackupConfig,
   Category,
+  BookkeepingCategory,
+  JournalEntryType,
 } from '../types';
 import {
   createBackupPayload,
@@ -87,19 +89,22 @@ import {
   pushFullDatabaseToFirestore,
 } from '../services/firestoreSync';
 
+export const MASTER_RESET_PASSWORD = 'Hannaa1224@';
+
 interface WarungContextType {
   // Authentication & Users
   users: AppUser[];
   currentUser: AppUser | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => { success: boolean; message?: string };
+  login: (email: string, password?: string) => { success: boolean; message?: string };
   logout: () => void;
-  registerUser: (userData: { name: string; email: string; password: string; phone?: string }) => { success: boolean; message?: string; user?: AppUser };
+  registerUser: (userData: { name: string; email: string; password?: string; phone?: string }) => { success: boolean; message?: string; user?: AppUser };
   addUser: (userData: Omit<AppUser, 'id' | 'createdAt' | 'lastLogin'>) => { success: boolean; message?: string; user?: AppUser };
   updateUser: (id: string, userData: Partial<AppUser>) => { success: boolean; message?: string };
   deleteUser: (id: string) => { success: boolean; message?: string };
   toggleUserStatus: (id: string) => void;
-  resetUserPassword: (id: string, newPassword: string) => void;
+  resetUserPassword: (id: string, newPassword?: string) => void;
+  removeAllUserPasswords: () => void;
 
   // Master Data
   products: Product[];
@@ -140,6 +145,9 @@ interface WarungContextType {
   // Bookkeeping / Pembukuan
   manualJournals: ManualJournalEntry[];
   cashClosings: CashClosingRecord[];
+  bookkeepingCategories: BookkeepingCategory[];
+  addBookkeepingCategory: (name: string, type: JournalEntryType) => { success: boolean; message: string; category?: BookkeepingCategory };
+  deleteBookkeepingCategory: (id: string) => { success: boolean; message: string };
   addManualJournalEntry: (entry: Omit<ManualJournalEntry, 'id'>) => ManualJournalEntry;
   deleteManualJournalEntry: (id: string) => void;
   addCashClosingRecord: (record: Omit<CashClosingRecord, 'id'>) => CashClosingRecord;
@@ -241,8 +249,8 @@ interface WarungContextType {
   // Store Settings & Cloud Sync
   updateStoreSettings: (settings: Partial<StoreSettings>) => void;
   syncWithCloud: () => Promise<boolean>;
-  clearAllDatabase: () => void;
-  clearSalesAndCashData: () => void;
+  clearAllDatabase: (password?: string) => { success: boolean; message: string };
+  clearSalesAndCashData: (password?: string) => { success: boolean; message: string };
 
   // Financial Calculations
   calculateProfitLoss: (startDate: Date, endDate: Date, periodLabel: string) => ProfitLossSummary;
@@ -262,6 +270,22 @@ interface WarungContextType {
 
 const WarungContext = createContext<WarungContextType | undefined>(undefined);
 
+export const DEFAULT_BOOKKEEPING_CATEGORIES: BookkeepingCategory[] = [
+  // Kas Masuk (Debit)
+  { id: 'bkc_in_1', name: 'Modal Awal / Tambahan Modal', type: 'KAS_MASUK', isSystem: true },
+  { id: 'bkc_in_2', name: 'Pendapatan Lain-lain', type: 'KAS_MASUK', isSystem: true },
+  { id: 'bkc_in_3', name: 'Pelunasan Kasbon', type: 'KAS_MASUK', isSystem: true },
+  { id: 'bkc_in_4', name: 'Top-Up Saldo Deposit', type: 'KAS_MASUK', isSystem: true },
+  { id: 'bkc_in_5', name: 'Pengembalian Biaya (Refund)', type: 'KAS_MASUK', isSystem: true },
+  // Kas Keluar (Kredit)
+  { id: 'bkc_out_1', name: 'Prive / Penarikan Pemilik', type: 'KAS_KELUAR', isSystem: true },
+  { id: 'bkc_out_2', name: 'Setor Kas ke Bank', type: 'KAS_KELUAR', isSystem: true },
+  { id: 'bkc_out_3', name: 'Pembelian Aset / Perlengkapan', type: 'KAS_KELUAR', isSystem: true },
+  { id: 'bkc_out_5', name: 'Operasional & Listrik', type: 'KAS_KELUAR', isSystem: true },
+  { id: 'bkc_out_6', name: 'Gaji & Uang Makan Karyawan', type: 'KAS_KELUAR', isSystem: true },
+  { id: 'bkc_out_7', name: 'Pengeluaran Lain-lain', type: 'KAS_KELUAR', isSystem: true },
+];
+
 const STORAGE_KEYS = {
   USERS: 'warung_users_v3',
   CURRENT_USER: 'warung_current_user_v3',
@@ -274,6 +298,7 @@ const STORAGE_KEYS = {
   MANUAL_JOURNALS: 'warung_manual_journals_v2',
   CASH_CLOSINGS: 'warung_cash_closings_v2',
   SHOPPING_ITEMS: 'warung_shopping_items_v2',
+  BOOKKEEPING_CATEGORIES: 'warung_bookkeeping_categories_v1',
 };
 
 // Clean legacy demo keys on load
@@ -292,31 +317,32 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // Users state
   const [users, setUsers] = useState<AppUser[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.USERS);
-    if (!saved) return INITIAL_USERS;
+    if (!saved) return INITIAL_USERS.map(u => ({ ...u, password: '' }));
     try {
       const parsed: AppUser[] = JSON.parse(saved);
       const migrated = parsed.map(u => {
+        const base = { ...u, password: '' };
         if (u.id === 'usr-1' || u.email === 'hanna.hannabee@gmail.com') {
-          return { ...u, name: 'Hanna', email: 'hannaalmahyra24@gmail.com', role: 'Owner' };
+          return { ...base, name: 'Hanna', email: 'hannaalmahyra24@gmail.com', role: 'Owner' };
         }
         if (u.id === 'usr-2' || u.email === 'iyan0080@gmail.com') {
-          return { ...u, name: 'IYAN', email: 'iyan0080@gmail.com', role: 'Admin 1' };
+          return { ...base, name: 'IYAN', email: 'iyan0080@gmail.com', role: 'Admin 1' };
         }
         if (u.id === 'usr-3' || u.email === 'nirma.hannabee@gmail.com' || u.email === 'juni.bid89@gmail.com') {
-          return { ...u, name: 'JUNI', email: 'juni.bid89@gmail.com', role: 'Admin 2' };
+          return { ...base, name: 'JUNI', email: 'juni.bid89@gmail.com', role: 'Admin 2' };
         }
-        return u;
+        return base;
       });
 
       if (!migrated.some(u => u.email === 'hannaalmahyra24@gmail.com')) {
-        migrated.unshift(INITIAL_USERS[0]);
+        migrated.unshift({ ...INITIAL_USERS[0], password: '' });
       }
       if (!migrated.some(u => u.email === 'juni.bid89@gmail.com')) {
-        migrated.push(INITIAL_USERS[2]);
+        migrated.push({ ...INITIAL_USERS[2], password: '' });
       }
       return migrated;
     } catch {
-      return INITIAL_USERS;
+      return INITIAL_USERS.map(u => ({ ...u, password: '' }));
     }
   });
 
@@ -325,13 +351,14 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (!saved) return null;
     try {
       const parsed: AppUser = JSON.parse(saved);
-      if (parsed.email === 'hanna.hannabee@gmail.com' || parsed.id === 'usr-1') {
-        return { ...parsed, name: 'Hanna', email: 'hannaalmahyra24@gmail.com', role: 'Owner' };
+      const cleaned = { ...parsed, password: '' };
+      if (cleaned.email === 'hanna.hannabee@gmail.com' || cleaned.id === 'usr-1') {
+        return { ...cleaned, name: 'Hanna', email: 'hannaalmahyra24@gmail.com', role: 'Owner' };
       }
-      if (parsed.email === 'nirma.hannabee@gmail.com' || parsed.id === 'usr-3') {
-        return { ...parsed, name: 'JUNI', email: 'juni.bid89@gmail.com', role: 'Admin 2' };
+      if (cleaned.email === 'nirma.hannabee@gmail.com' || cleaned.id === 'usr-3') {
+        return { ...cleaned, name: 'JUNI', email: 'juni.bid89@gmail.com', role: 'Admin 2' };
       }
-      return parsed;
+      return cleaned;
     } catch {
       return null;
     }
@@ -400,6 +427,30 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const saved = localStorage.getItem(STORAGE_KEYS.MANUAL_JOURNALS);
     return saved ? JSON.parse(saved) : INITIAL_MANUAL_JOURNALS;
   });
+
+  const [bookkeepingCategories, setBookkeepingCategories] = useState<BookkeepingCategory[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.BOOKKEEPING_CATEGORIES);
+    if (!saved) return DEFAULT_BOOKKEEPING_CATEGORIES;
+    try {
+      const parsed: BookkeepingCategory[] = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const defaultMap = new Map(DEFAULT_BOOKKEEPING_CATEGORIES.map(c => [c.name.toLowerCase() + '_' + c.type, c]));
+        parsed.forEach(c => {
+          if (!c.name.toLowerCase().includes('bahan baku')) {
+            defaultMap.set(c.name.toLowerCase() + '_' + c.type, c);
+          }
+        });
+        return Array.from(defaultMap.values()).filter(c => !c.name.toLowerCase().includes('bahan baku'));
+      }
+      return DEFAULT_BOOKKEEPING_CATEGORIES;
+    } catch {
+      return DEFAULT_BOOKKEEPING_CATEGORIES;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.BOOKKEEPING_CATEGORIES, JSON.stringify(bookkeepingCategories));
+  }, [bookkeepingCategories]);
 
   const [cashClosings, setCashClosings] = useState<CashClosingRecord[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.CASH_CLOSINGS);
@@ -658,16 +709,17 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const unsubUsers = subscribeToUsers(cloudUsers => {
       if (cloudUsers.length > 0) {
         const migratedCloud = cloudUsers.map(u => {
+          const base = { ...u, password: '' };
           if (u.id === 'usr-1' || u.email === 'hanna.hannabee@gmail.com') {
-            return { ...u, name: 'Hanna', email: 'hannaalmahyra24@gmail.com', role: 'Owner' };
+            return { ...base, name: 'Hanna', email: 'hannaalmahyra24@gmail.com', role: 'Owner' };
           }
           if (u.id === 'usr-2' || u.email === 'iyan0080@gmail.com') {
-            return { ...u, name: 'IYAN', email: 'iyan0080@gmail.com', role: 'Admin 1' };
+            return { ...base, name: 'IYAN', email: 'iyan0080@gmail.com', role: 'Admin 1' };
           }
           if (u.id === 'usr-3' || u.email === 'nirma.hannabee@gmail.com' || u.email === 'juni.bid89@gmail.com') {
-            return { ...u, name: 'JUNI', email: 'juni.bid89@gmail.com', role: 'Admin 2' };
+            return { ...base, name: 'JUNI', email: 'juni.bid89@gmail.com', role: 'Admin 2' };
           }
-          return u;
+          return base;
         });
         setUsers(migratedCloud);
       }
@@ -737,15 +789,14 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, [products, transactions, expenses, customers, manualJournals, cashClosings, storeSettings, users]);
 
   // User Auth & Management Methods
-  const login = useCallback((email: string, password: string): { success: boolean; message?: string } => {
+  const login = useCallback((email: string, _password?: string): { success: boolean; message?: string } => {
     const cleanEmail = email.trim().toLowerCase();
-    const cleanPass = password.trim();
 
     const foundUser = users.find(u => u.email.toLowerCase() === cleanEmail);
     if (!foundUser) {
       return {
         success: false,
-        message: 'Akun dengan email Gmail ini belum terdaftar. Silakan periksa kembali atau daftar baru.',
+        message: 'Akun dengan email Gmail ini belum terdaftar. Silakan periksa kembali atau pilih akun yang tersedia.',
       };
     }
 
@@ -756,15 +807,10 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       };
     }
 
-    if (foundUser.password !== cleanPass) {
-      return {
-        success: false,
-        message: 'Password yang Anda masukkan salah. Silakan coba lagi.',
-      };
-    }
-
+    // Password requirements have been removed for all users - direct access granted
     const updatedUser: AppUser = {
       ...foundUser,
+      password: '',
       lastLogin: new Date().toISOString(),
     };
 
@@ -779,15 +825,11 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
   }, []);
 
-  const registerUser = useCallback((userData: { name: string; email: string; password: string; phone?: string }) => {
+  const registerUser = useCallback((userData: { name: string; email: string; password?: string; phone?: string }) => {
     const cleanEmail = userData.email.trim().toLowerCase();
-    const cleanPass = userData.password.trim();
 
     if (!cleanEmail) {
       return { success: false, message: 'Email Gmail wajib diisi.' };
-    }
-    if (!cleanPass || cleanPass.length < 4) {
-      return { success: false, message: 'Password minimal 4 karakter.' };
     }
 
     const existing = users.find(u => u.email.toLowerCase() === cleanEmail);
@@ -802,7 +844,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       id: 'usr-' + Date.now(),
       name: userData.name.trim() || 'Pengguna Warung',
       email: cleanEmail,
-      password: cleanPass,
+      password: '',
       phone: userData.phone?.trim() || '',
       avatarColor: randomColor,
       role: 'Pengguna Warung',
@@ -819,13 +861,9 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const addUser = useCallback((userData: Omit<AppUser, 'id' | 'createdAt' | 'lastLogin'>) => {
     const cleanEmail = userData.email.trim().toLowerCase();
-    const cleanPass = userData.password.trim();
 
     if (!cleanEmail) {
       return { success: false, message: 'Email Gmail wajib diisi.' };
-    }
-    if (!cleanPass) {
-      return { success: false, message: 'Password wajib ditentukan.' };
     }
 
     const existing = users.find(u => u.email.toLowerCase() === cleanEmail);
@@ -840,9 +878,9 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       ...userData,
       id: 'usr-' + Date.now(),
       email: cleanEmail,
-      password: cleanPass,
+      password: '',
       avatarColor: randomColor,
-      role: 'Pengguna Warung',
+      role: userData.role?.trim() || 'Pengguna Warung',
       isActive: userData.isActive !== undefined ? userData.isActive : true,
       createdAt: new Date().toISOString(),
       lastLogin: undefined,
@@ -916,12 +954,12 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   }, [currentUser]);
 
-  const resetUserPassword = useCallback((id: string, newPassword: string) => {
+  const resetUserPassword = useCallback((id: string, newPassword?: string) => {
     let userToSave: AppUser | null = null;
     setUsers(prev =>
       prev.map(u => {
         if (u.id === id) {
-          const updated = { ...u, password: newPassword };
+          const updated = { ...u, password: newPassword || '' };
           userToSave = updated;
           if (currentUser && currentUser.id === id) {
             setCurrentUser(updated);
@@ -933,6 +971,20 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     );
     if (userToSave) {
       saveUserToFirestore(userToSave);
+    }
+  }, [currentUser]);
+
+  const removeAllUserPasswords = useCallback(() => {
+    setUsers(prev => {
+      const updated = prev.map(u => ({ ...u, password: '' }));
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updated));
+      updated.forEach(u => saveUserToFirestore(u));
+      return updated;
+    });
+    if (currentUser) {
+      const updatedCurrent = { ...currentUser, password: '' };
+      setCurrentUser(updatedCurrent);
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedCurrent));
     }
   }, [currentUser]);
 
@@ -2535,6 +2587,54 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     );
   }, []);
 
+  // Bookkeeping Categories CRUD
+  const addBookkeepingCategory = useCallback(
+    (name: string, type: JournalEntryType) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        return { success: false, message: 'Nama kategori tidak boleh kosong.' };
+      }
+      const exists = bookkeepingCategories.some(
+        c => c.type === type && c.name.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (exists) {
+        return {
+          success: false,
+          message: `Kategori "${trimmed}" untuk ${type === 'KAS_MASUK' ? 'Kas Masuk' : 'Kas Keluar'} sudah ada.`,
+        };
+      }
+      const newCat: BookkeepingCategory = {
+        id: `bkc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        name: trimmed,
+        type,
+        isSystem: false,
+      };
+      setBookkeepingCategories(prev => [...prev, newCat]);
+      return {
+        success: true,
+        message: `Kategori "${trimmed}" berhasil ditambahkan!`,
+        category: newCat,
+      };
+    },
+    [bookkeepingCategories]
+  );
+
+  const deleteBookkeepingCategory = useCallback(
+    (id: string) => {
+      const target = bookkeepingCategories.find(c => c.id === id);
+      if (!target) {
+        return { success: false, message: 'Kategori tidak ditemukan.' };
+      }
+      const sameTypeCount = bookkeepingCategories.filter(c => c.type === target.type).length;
+      if (sameTypeCount <= 1) {
+        return { success: false, message: 'Minimal harus ada 1 kategori untuk jenis kas ini.' };
+      }
+      setBookkeepingCategories(prev => prev.filter(c => c.id !== id));
+      return { success: true, message: `Kategori "${target.name}" berhasil dihapus.` };
+    },
+    [bookkeepingCategories]
+  );
+
   // Bookkeeping CRUD
   const addManualJournalEntry = useCallback((entryData: Omit<ManualJournalEntry, 'id'>): ManualJournalEntry => {
     const newEntry: ManualJournalEntry = {
@@ -3073,14 +3173,22 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
   }, []);
 
-  // Clear all demo/test database data
-  const clearAllDatabase = useCallback(() => {
+  // Clear all demo/test database data (requires authorization password: Hannaa1224@)
+  const clearAllDatabase = useCallback((password?: string): { success: boolean; message: string } => {
+    if (password !== MASTER_RESET_PASSWORD) {
+      return {
+        success: false,
+        message: 'Password otorisasi salah! Reset seluruh database dibatalkan demi keamanan data.',
+      };
+    }
+
     setProducts([]);
     setTransactions([]);
     setExpenses([]);
     setCustomers([]);
     setManualJournals([]);
     setCashClosings([]);
+    setShoppingItems([]);
     setCart([]);
     setSelectedCustomerState(null);
     setDiscountInput(0);
@@ -3093,14 +3201,26 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     localStorage.removeItem(STORAGE_KEYS.CUSTOMERS);
     localStorage.removeItem(STORAGE_KEYS.MANUAL_JOURNALS);
     localStorage.removeItem(STORAGE_KEYS.CASH_CLOSINGS);
+    localStorage.removeItem(STORAGE_KEYS.SHOPPING_ITEMS);
 
     // Clear Cloud Firestore documents in real time
     clearAllFirestoreDocuments();
+    return {
+      success: true,
+      message: 'Semua data database telah berhasil dikosongkan. Database warung Anda sekarang bersih dan siap digunakan!',
+    };
   }, []);
 
   // Clear only sales and cash data (penjualan kasir, beban pengeluaran, mutasi kas manual, tutup kas)
-  // Data master produk/menu dan daftar pelanggan tetap utuh
-  const clearSalesAndCashData = useCallback(() => {
+  // Data master produk/menu dan daftar pelanggan tetap utuh (requires authorization password: Hannaa1224@)
+  const clearSalesAndCashData = useCallback((password?: string): { success: boolean; message: string } => {
+    if (password !== MASTER_RESET_PASSWORD) {
+      return {
+        success: false,
+        message: 'Password otorisasi salah! Penghapusan data kas & penjualan dibatalkan demi keamanan.',
+      };
+    }
+
     setTransactions([]);
     setExpenses([]);
     setManualJournals([]);
@@ -3130,6 +3250,10 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     // Clear Cloud Firestore documents in real time
     clearSalesAndCashFirestoreDocuments();
+    return {
+      success: true,
+      message: 'Berhasil! Seluruh data transaksi penjualan kasir, beban pengeluaran, dan buku kas telah dibersihkan. Data menu & pelanggan tetap aman.',
+    };
   }, []);
 
   // Financial calculations helper for any date interval
@@ -3451,6 +3575,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         deleteUser,
         toggleUserStatus,
         resetUserPassword,
+        removeAllUserPasswords,
         products,
         categories,
         transactions,
@@ -3470,6 +3595,9 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         restoreShoppingSession,
         manualJournals,
         cashClosings,
+        bookkeepingCategories,
+        addBookkeepingCategory,
+        deleteBookkeepingCategory,
         addManualJournalEntry,
         deleteManualJournalEntry,
         addCashClosingRecord,

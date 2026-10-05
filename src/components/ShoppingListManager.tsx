@@ -51,7 +51,7 @@ import * as XLSX from 'xlsx';
 
 const SHOPPING_CATEGORIES = [
   'Semua Kategori',
-  'Bahan Baku Utama',
+  'Umum',
   'Bumbu & Sayuran',
   'Minuman & Sirup',
   'Kemasan & Plastik',
@@ -107,8 +107,15 @@ export const ShoppingListManager: React.FC = () => {
 
   // Quick Input Realisasi Modal State
   const [showRealizeModal, setShowRealizeModal] = useState(false);
+  const parseRupiahInput = (val: string | number | undefined | null): number => {
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    if (!val) return 0;
+    const clean = String(val).replace(/\D/g, '');
+    return clean ? parseInt(clean, 10) : 0;
+  };
+
   const [realizeItem, setRealizeItem] = useState<ShoppingItem | null>(null);
-  const [realizePrice, setRealizePrice] = useState<number | ''>('');
+  const [realizePrice, setRealizePrice] = useState<number | string>('');
   const [realizeShoppingDate, setRealizeShoppingDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [realizePaymentMethod, setRealizePaymentMethod] = useState<'TUNAI' | 'TRANSFER'>('TUNAI');
   const [realizeNotes, setRealizeNotes] = useState('');
@@ -144,11 +151,11 @@ export const ShoppingListManager: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [name, setName] = useState('');
-  const [category, setCategory] = useState('Bahan Baku Utama');
+  const [category, setCategory] = useState('Umum');
   const [quantity, setQuantity] = useState<number | ''>(1);
   const [unit, setUnit] = useState('kg');
-  const [estimatedPrice, setEstimatedPrice] = useState<number | ''>('');
-  const [actualPrice, setActualPrice] = useState<number | ''>('');
+  const [estimatedPrice, setEstimatedPrice] = useState<number | string>('');
+  const [actualPrice, setActualPrice] = useState<number | string>('');
   const [priority, setPriority] = useState<ShoppingItemPriority>('NORMAL');
   const [supplierLocation, setSupplierLocation] = useState('');
   const [shoppingDate, setShoppingDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -156,7 +163,7 @@ export const ShoppingListManager: React.FC = () => {
 
   // Record to Expense Confirmation Modal
   const [expenseItem, setExpenseItem] = useState<ShoppingItem | null>(null);
-  const [expenseActualAmount, setExpenseActualAmount] = useState<number | ''>('');
+  const [expenseActualAmount, setExpenseActualAmount] = useState<number | string>('');
   const [expensePaymentMethod, setExpensePaymentMethod] = useState<'TUNAI' | 'TRANSFER'>('TUNAI');
 
   // Register all modals to back button and escape navigation
@@ -322,7 +329,7 @@ export const ShoppingListManager: React.FC = () => {
     if (!realizeItem) return;
 
     // Nominal terisi otomatis sesuai estimasi anggaran jika belum ada input
-    const actualAmount = realizePrice !== '' ? Number(realizePrice) : (realizeItem.estimatedPrice || 0);
+    const actualAmount = realizePrice !== '' ? parseRupiahInput(realizePrice) : (realizeItem.estimatedPrice || 0);
     const dateToUse = realizeShoppingDate || new Date().toISOString().slice(0, 10);
 
     // Otomatisasi Terintegrasi Penuh:
@@ -426,7 +433,7 @@ export const ShoppingListManager: React.FC = () => {
   const handleOpenAddModal = () => {
     setEditingItemId(null);
     setName('');
-    setCategory('Bahan Baku Utama');
+    setCategory('Umum');
     setQuantity(1);
     setUnit('kg');
     setEstimatedPrice('');
@@ -459,14 +466,17 @@ export const ShoppingListManager: React.FC = () => {
 
     const dateToUse = shoppingDate || new Date().toISOString().slice(0, 10);
 
+    const estAmount = parseRupiahInput(estimatedPrice);
+    const actAmount = actualPrice !== '' ? parseRupiahInput(actualPrice) : undefined;
+
     if (editingItemId) {
       updateShoppingItem(editingItemId, {
         name: name.trim(),
-        category,
+        category: category || 'Umum',
         quantity: Number(quantity) || 1,
         unit,
-        estimatedPrice: Number(estimatedPrice) || 0,
-        actualPrice: actualPrice ? Number(actualPrice) : undefined,
+        estimatedPrice: estAmount,
+        actualPrice: actAmount,
         priority,
         supplierLocation: supplierLocation.trim() || undefined,
         shoppingDate: dateToUse,
@@ -475,11 +485,11 @@ export const ShoppingListManager: React.FC = () => {
     } else {
       addShoppingItem({
         name: name.trim(),
-        category,
+        category: category || 'Umum',
         quantity: Number(quantity) || 1,
         unit,
-        estimatedPrice: Number(estimatedPrice) || 0,
-        actualPrice: actualPrice ? Number(actualPrice) : undefined,
+        estimatedPrice: estAmount,
+        actualPrice: actAmount,
         priority,
         supplierLocation: supplierLocation.trim() || undefined,
         shoppingDate: dateToUse,
@@ -500,7 +510,9 @@ export const ShoppingListManager: React.FC = () => {
 
   const handleConfirmRecordExpense = () => {
     if (!expenseItem) return;
-    const finalAmount = Number(expenseActualAmount) || expenseItem.actualPrice || expenseItem.estimatedPrice || 0;
+    const finalAmount = expenseActualAmount !== ''
+      ? parseRupiahInput(expenseActualAmount)
+      : (expenseItem.actualPrice || expenseItem.estimatedPrice || 0);
     recordShoppingItemAsExpense(expenseItem.id, finalAmount, expensePaymentMethod);
     setExpenseItem(null);
   };
@@ -2506,38 +2518,21 @@ export const ShoppingListManager: React.FC = () => {
                 />
               </div>
 
-              {/* Kategori & Prioritas */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Kategori Bahan
-                  </label>
-                  <select
-                    value={category}
-                    onChange={e => setCategory(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:ring-2 focus:ring-blue-500"
-                  >
-                    {SHOPPING_CATEGORIES.filter(c => c !== 'Semua Kategori').map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Tingkat Kebutuhan / Prioritas
-                  </label>
-                  <select
-                    value={priority}
-                    onChange={e => setPriority(e.target.value as ShoppingItemPriority)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 font-bold focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="URGENT">🔴 Mendesak (Habis!)</option>
-                    <option value="HIGH">🟠 Prioritas Tinggi</option>
-                    <option value="NORMAL">🔵 Normal</option>
-                    <option value="LOW">⚪ Stok Tambahan</option>
-                  </select>
-                </div>
+              {/* Prioritas */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Tingkat Kebutuhan / Prioritas
+                </label>
+                <select
+                  value={priority}
+                  onChange={e => setPriority(e.target.value as ShoppingItemPriority)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 font-bold focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="URGENT">🔴 Mendesak (Habis!)</option>
+                  <option value="HIGH">🟠 Prioritas Tinggi</option>
+                  <option value="NORMAL">🔵 Normal</option>
+                  <option value="LOW">⚪ Stok Tambahan</option>
+                </select>
               </div>
 
               {/* Qty & Satuan */}
@@ -2602,32 +2597,46 @@ export const ShoppingListManager: React.FC = () => {
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                       Estimasi Total Anggaran (Rp)
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1000"
-                      placeholder="Rp 0 (perkiraan)"
-                      value={estimatedPrice}
-                      onChange={e => setEstimatedPrice(Number(e.target.value) || '')}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-500"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-0.5">Budget awal sebelum belanja</p>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xs">
+                        Rp
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Contoh: 15.500"
+                        value={estimatedPrice !== '' ? Number(estimatedPrice).toLocaleString('id-ID') : ''}
+                        onChange={e => {
+                          const clean = e.target.value.replace(/\D/g, '');
+                          setEstimatedPrice(clean ? parseInt(clean, 10) : '');
+                        }}
+                        className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Budget awal sebelum belanja (bisa nominal bebas)</p>
                   </div>
 
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                       Harga Realisasi Beli (Rp)
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1000"
-                      placeholder="Rp 0 (aktual dibeli)"
-                      value={actualPrice}
-                      onChange={e => setActualPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-white border border-emerald-300 rounded-xl text-xs font-mono font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500"
-                    />
-                    <p className="text-[10px] text-emerald-600 font-medium mt-0.5">Harga riil nota/struk belanja pasar</p>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xs">
+                        Rp
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Contoh: 15.500"
+                        value={actualPrice !== '' ? Number(actualPrice).toLocaleString('id-ID') : ''}
+                        onChange={e => {
+                          const clean = e.target.value.replace(/\D/g, '');
+                          setActualPrice(clean ? parseInt(clean, 10) : '');
+                        }}
+                        className="w-full pl-9 pr-3 py-2 bg-white border border-emerald-300 rounded-xl text-xs font-mono font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <p className="text-[10px] text-emerald-600 font-medium mt-1">Harga riil nota/struk belanja pasar</p>
                   </div>
                 </div>
               </div>
@@ -2730,16 +2739,23 @@ export const ShoppingListManager: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-800 mb-1">
                   Nominal Realisasi Pengeluaran (Rp) *
                 </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1000"
-                  required
-                  placeholder="Rp 0"
-                  value={expenseActualAmount}
-                  onChange={e => setExpenseActualAmount(Number(e.target.value) || '')}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500"
-                />
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xs">
+                    Rp
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    required
+                    placeholder="Contoh: 15.500"
+                    value={expenseActualAmount !== '' ? Number(expenseActualAmount).toLocaleString('id-ID') : ''}
+                    onChange={e => {
+                      const clean = e.target.value.replace(/\D/g, '');
+                      setExpenseActualAmount(clean ? parseInt(clean, 10) : '');
+                    }}
+                    className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
               </div>
 
               <div>
@@ -2861,15 +2877,17 @@ export const ShoppingListManager: React.FC = () => {
                     Rp
                   </span>
                   <input
-                    type="number"
-                    min="0"
-                    step="100"
+                    type="text"
+                    inputMode="numeric"
                     required
                     autoFocus
-                    placeholder={realizeItem.estimatedPrice > 0 ? String(realizeItem.estimatedPrice) : '0'}
-                    value={realizePrice}
-                    onChange={e => setRealizePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full pl-11 pr-3 py-2.5 border-2 border-emerald-500 rounded-2xl text-base font-mono font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-emerald-100"
+                    placeholder={realizeItem.estimatedPrice > 0 ? Number(realizeItem.estimatedPrice).toLocaleString('id-ID') : '0'}
+                    value={realizePrice !== '' ? Number(realizePrice).toLocaleString('id-ID') : ''}
+                    onChange={e => {
+                      const clean = e.target.value.replace(/\D/g, '');
+                      setRealizePrice(clean ? parseInt(clean, 10) : '');
+                    }}
+                    className="w-full pl-11 pr-3 py-2.5 border-2 border-emerald-500 rounded-2xl text-base font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-4 focus:ring-emerald-100"
                   />
                 </div>
                 {realizePrice !== '' && Number(realizePrice) > 0 && (

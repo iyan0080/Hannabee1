@@ -12,6 +12,8 @@ import {
   Percent,
   CheckCircle2,
   AlertTriangle,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { ExpenseCategory } from '../types';
 
@@ -82,6 +84,24 @@ export const ProfitLossReport: React.FC = () => {
     exportProfitLossToPDF(summary, storeSettings);
   };
 
+  const [copiedWa, setCopiedWa] = useState(false);
+  const handleCopyWhatsAppSummary = () => {
+    let text = `*LAPORAN LABA RUGI - ${storeSettings.storeName.toUpperCase()}*\n`;
+    text += `Periode: ${periodLabel}\n`;
+    text += `Dicetak: ${new Date().toLocaleDateString('id-ID')}\n\n`;
+    text += `💰 *Pendapatan Bersih:* ${formatRupiah(summary.totalRevenue)}\n`;
+    text += `📦 *Beban Pokok (HPP):* -${formatRupiah(summary.totalCostOfGoods)}\n`;
+    text += `📈 *Laba Kotor:* ${formatRupiah(summary.grossProfit)} (${summary.grossProfitMargin.toFixed(1)}%)\n\n`;
+    text += `📋 *Beban Operasional:* -${formatRupiah(summary.totalExpenses)}\n`;
+    text += `💵 *Laba Bersih:* ${formatRupiah(summary.netProfit)} (${summary.netProfitMargin.toFixed(1)}%)\n\n`;
+    text += `_Dihasilkan otomatis oleh POS ${storeSettings.storeName}_`;
+
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedWa(true);
+      setTimeout(() => setCopiedWa(false), 2500);
+    });
+  };
+
   const isNetProfitPositive = summary.netProfit >= 0;
 
   return (
@@ -103,24 +123,34 @@ export const ProfitLossReport: React.FC = () => {
           </p>
         </div>
 
-        {/* Export Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Export Buttons - 1 Kolom (Atas dan Bawah) */}
+        <div className="flex flex-col gap-1.5 w-full sm:w-48 shrink-0">
           <button
             id="export-pl-excel-btn"
             onClick={handleExportExcel}
-            className="px-3.5 py-2 bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
+            className="w-full px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-xl text-xs font-semibold flex items-center justify-center sm:justify-start gap-2 shadow-2xs transition"
           >
-            <FileSpreadsheet size={15} className="text-emerald-700" />
+            <FileSpreadsheet size={14} className="text-emerald-700 shrink-0" />
             <span>Ekspor Excel (.xlsx)</span>
           </button>
 
           <button
             id="export-pl-pdf-btn"
             onClick={handleExportPDF}
-            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
+            className="w-full px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center justify-center sm:justify-start gap-2 shadow-2xs transition"
           >
-            <FileText size={15} className="text-slate-300" />
+            <FileText size={14} className="text-slate-300 shrink-0" />
             <span>Cetak PDF Laporan</span>
+          </button>
+
+          <button
+            id="export-pl-copy-wa-btn"
+            onClick={handleCopyWhatsAppSummary}
+            className="w-full px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center sm:justify-start gap-2 shadow-2xs transition"
+            title="Salin ringkasan Laba Rugi ke WhatsApp"
+          >
+            {copiedWa ? <Check size={14} className="shrink-0" /> : <Copy size={14} className="shrink-0" />}
+            <span>{copiedWa ? 'Tersalin!' : 'Salin ke WA'}</span>
           </button>
         </div>
       </div>

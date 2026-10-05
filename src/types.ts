@@ -234,6 +234,13 @@ export interface ProfitLossSummary {
 
 // === BOOKKEEPING / PEMBUKUAN TYPES ===
 
+export interface BookkeepingCategory {
+  id: string;
+  name: string;
+  type: JournalEntryType; // 'KAS_MASUK' | 'KAS_KELUAR'
+  isSystem?: boolean;
+}
+
 export type JournalEntryType = 'KAS_MASUK' | 'KAS_KELUAR';
 
 export type JournalCategory =
@@ -394,7 +401,7 @@ export interface AppUser {
   id: string;
   name: string;
   email: string; // Gmail address
-  password: string; // User-chosen password
+  password?: string; // Optional (passwords removed across all users)
   phone?: string;
   avatarColor?: string;
   role: string; // Equal level for all users: 'Pengguna Warung'

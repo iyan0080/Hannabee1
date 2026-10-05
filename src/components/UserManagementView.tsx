@@ -31,7 +31,7 @@ export const UserManagementView: React.FC = () => {
     updateUser,
     deleteUser,
     toggleUserStatus,
-    resetUserPassword,
+    removeAllUserPasswords,
   } = useWarung();
 
   // Search & Filter
@@ -40,13 +40,10 @@ export const UserManagementView: React.FC = () => {
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
-  const [passwordModalUser, setPasswordModalUser] = useState<AppUser | null>(null);
-  const [newPasswordVal, setNewPasswordVal] = useState('');
 
   // Add User Form State
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
-  const [addPassword, setAddPassword] = useState('');
   const [addPhone, setAddPhone] = useState('');
   const [addRole, setAddRole] = useState('Kasir');
   const [addIsActive, setAddIsActive] = useState(true);
@@ -76,15 +73,10 @@ export const UserManagementView: React.FC = () => {
       return;
     }
 
-    if (!addPassword || addPassword.length < 4) {
-      setFormError('Password minimal 4 karakter.');
-      return;
-    }
-
     const res = addUser({
       name: addName.trim(),
       email: cleanEmail,
-      password: addPassword.trim(),
+      password: '',
       phone: addPhone.trim(),
       role: addRole.trim() || 'Kasir',
       isActive: addIsActive,
@@ -96,9 +88,15 @@ export const UserManagementView: React.FC = () => {
       setShowAddModal(false);
       setAddName('');
       setAddEmail('');
-      setAddPassword('');
       setAddPhone('');
       setAddRole('Kasir');
+    }
+  };
+
+  const handleRemoveAllUserPasswords = () => {
+    if (window.confirm('Yakin ingin menghapus password semua user? Setelah ini seluruh pengguna dapat masuk langsung tanpa password.')) {
+      removeAllUserPasswords();
+      alert('Password semua user berhasil dihapus! Sekarang seluruh staf dapat langsung masuk.');
     }
   };
 
@@ -127,22 +125,6 @@ export const UserManagementView: React.FC = () => {
     } else {
       setEditingUser(null);
     }
-  };
-
-  // Handle Reset Password
-  const handleSaveNewPassword = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!passwordModalUser) return;
-
-    if (!newPasswordVal || newPasswordVal.length < 4) {
-      alert('Password baru minimal 4 karakter.');
-      return;
-    }
-
-    resetUserPassword(passwordModalUser.id, newPasswordVal.trim());
-    setPasswordModalUser(null);
-    setNewPasswordVal('');
-    alert(`Password untuk ${passwordModalUser.name} (${passwordModalUser.email}) berhasil diperbarui!`);
   };
 
   // Handle Delete
@@ -175,23 +157,35 @@ export const UserManagementView: React.FC = () => {
                 Manajemen Pengguna & Hak Akses
               </h1>
               <p className="text-xs text-slate-500">
-                Kelola daftar akun login Gmail staf & kasir warung. Semua pengguna memiliki tingkat hak akses yang setara.
+                Kelola daftar akun login Gmail staf & kasir warung. Semua pengguna memiliki tingkat hak akses yang setara tanpa repot password.
               </p>
             </div>
           </div>
         </div>
 
-        <button
-          id="btn-add-user"
-          onClick={() => {
-            setFormError('');
-            setShowAddModal(true);
-          }}
-          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition shrink-0"
-        >
-          <UserPlus size={16} />
-          <span>+ Tambah Pengguna Baru</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            id="btn-remove-all-passwords"
+            onClick={handleRemoveAllUserPasswords}
+            className="px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-2 shadow-2xs transition shrink-0"
+            title="Hapus password semua user"
+          >
+            <KeyRound size={15} className="text-amber-700" />
+            <span>Hapus Password Semua User</span>
+          </button>
+
+          <button
+            id="btn-add-user"
+            onClick={() => {
+              setFormError('');
+              setShowAddModal(true);
+            }}
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition shrink-0"
+          >
+            <UserPlus size={16} />
+            <span>+ Tambah Pengguna Baru</span>
+          </button>
+        </div>
       </div>
 
       {/* Info Pill */}
@@ -330,14 +324,10 @@ export const UserManagementView: React.FC = () => {
 
               {/* Action Buttons */}
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                <button
-                  onClick={() => setPasswordModalUser(user)}
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 transition"
-                  title="Ganti password pengguna"
-                >
-                  <KeyRound size={13} className="text-amber-600" />
-                  <span>Ganti Password</span>
-                </button>
+                <div className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold flex items-center gap-1.5">
+                  <Sparkles size={13} className="text-emerald-600" />
+                  <span>Bebas Akses (Tanpa Password)</span>
+                </div>
 
                 <div className="flex items-center gap-1.5">
                   <button
@@ -421,18 +411,9 @@ export const UserManagementView: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Password Pilihan <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Min. 4 karakter..."
-                  value={addPassword}
-                  onChange={e => setAddPassword(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
+                <Sparkles size={16} className="text-emerald-600 shrink-0" />
+                <span>Akun pengguna baru otomatis dibuat <strong>tanpa password</strong> sehingga staf dapat langsung masuk.</span>
               </div>
 
               <div>
@@ -632,63 +613,6 @@ export const UserManagementView: React.FC = () => {
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition"
                 >
                   Simpan Perubahan
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 3: Reset Password */}
-      {passwordModalUser && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-                  <KeyRound size={18} />
-                </span>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Ganti Password</h3>
-                  <p className="text-[11px] text-slate-500">{passwordModalUser.name}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setPasswordModalUser(null)}
-                className="text-slate-400 hover:text-slate-600 p-1"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveNewPassword} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Password Baru Pilihan <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Masukkan password baru..."
-                  value={newPasswordVal}
-                  onChange={e => setNewPasswordVal(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setPasswordModalUser(null)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs transition"
-                >
-                  Perbarui Password
                 </button>
               </div>
             </form>
