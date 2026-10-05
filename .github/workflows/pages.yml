@@ -5,13 +5,15 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-jobs:
 permissions:
-      contents: read
-      pages: write
-      id-token: write
-  build-and-deploy:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
     runs-on: ubuntu-latest
+    ...
     
 
     steps:
