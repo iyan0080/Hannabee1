@@ -1,4 +1,4 @@
-import { Transaction, Customer, StoreSettings, CartItem } from '../types';
+import { Transaction, Customer, StoreSettings, CartItem, PaymentRecord } from '../types';
 
 export function formatRupiah(amount: number): string {
   if (isNaN(amount) || amount === null || amount === undefined) return 'Rp 0';
@@ -205,6 +205,33 @@ ${promoContent}
 📞 Pesan/Tanya: ${store.phone}
 
 _Terima kasih telah menjadi pelanggan setia ${store.storeName}!_`;
+}
+
+export function generateDebtPaymentReceiptWhatsAppText(
+  transaction: Transaction,
+  payment: PaymentRecord,
+  store: StoreSettings,
+  remainingAmount: number
+): string {
+  const isFull = remainingAmount <= 0;
+  const statusStr = isFull ? '✅ LUNAS' : '⏳ CICILAN DITERIMA';
+  return `🧾 *BUKTI PEMBAYARAN PIUTANG / KASBON*
+*${store.storeName}*
+----------------------------------------
+No. Nota    : *${transaction.invoiceNumber}*
+Tanggal     : ${formatDateWithTime(payment.date)}
+Pelanggan   : *${transaction.customerName || '-'}*
+Kasir       : ${payment.receivedBy || store.cashierName || 'Kasir'}
+
+----------------------------------------
+*RINCIAN PEMBAYARAN:*
+Nominal Bayar : *${formatRupiah(payment.amount)}*
+Metode Bayar  : ${payment.paymentMethod || 'TUNAI'}
+Catatan       : ${payment.notes || '-'}
+Status Nota   : *${statusStr}*
+${!isFull ? `*SISA TAGIHAN NOTA : ${formatRupiah(remainingAmount)}*` : `*TAGIHAN NOTA INI SUDAH LUNAS 100%!*`}
+----------------------------------------
+_Terima kasih atas pembayaran Anda!_ 🙏😊`;
 }
 
 export function openWhatsApp(phone: string, message: string) {

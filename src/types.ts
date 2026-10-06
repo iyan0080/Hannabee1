@@ -80,7 +80,10 @@ export interface PaymentRecord {
   id: string;
   date: string;
   amount: number;
+  paymentMethod?: 'TUNAI' | 'TRANSFER' | 'SALDO_DEPOSIT' | 'LAINNYA';
   notes?: string;
+  remainingAmountAfter?: number;
+  receivedBy?: string;
 }
 
 export interface ReturnedItemRecord {

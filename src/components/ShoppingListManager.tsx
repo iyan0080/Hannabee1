@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useRegisterModal } from '../context/ModalContext';
 import { useWarung } from '../context/WarungContext';
 import { ShoppingItem, ShoppingItemPriority, ShoppingItemStatus } from '../types';
@@ -160,6 +160,55 @@ export const ShoppingListManager: React.FC = () => {
   const [supplierLocation, setSupplierLocation] = useState('');
   const [shoppingDate, setShoppingDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
+
+  // Custom Units State (Persisted in localStorage)
+  const [customUnits, setCustomUnits] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('warung_custom_shopping_units_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('warung_custom_shopping_units_v1', JSON.stringify(customUnits));
+    } catch (err) {
+      console.error('Failed to save custom units:', err);
+    }
+  }, [customUnits]);
+
+  const [showAddUnitInline, setShowAddUnitInline] = useState(false);
+  const [newCustomUnitInput, setNewCustomUnitInput] = useState('');
+
+  const allAvailableUnits = useMemo(() => {
+    const list = [...COMMON_UNITS];
+    customUnits.forEach(u => {
+      if (!list.includes(u.toLowerCase())) {
+        list.push(u.toLowerCase());
+      }
+    });
+    return list;
+  }, [customUnits]);
+
+  const handleAddCustomUnit = () => {
+    const trimmed = newCustomUnitInput.trim().toLowerCase();
+    if (!trimmed) return;
+    setUnit(trimmed);
+    if (!COMMON_UNITS.includes(trimmed) && !customUnits.includes(trimmed)) {
+      setCustomUnits(prev => [...prev, trimmed]);
+    }
+    setNewCustomUnitInput('');
+    setShowAddUnitInline(false);
+  };
+
+  const removeCustomUnit = (unitToRemove: string) => {
+    setCustomUnits(prev => prev.filter(u => u !== unitToRemove));
+    if (unit.toLowerCase() === unitToRemove.toLowerCase()) {
+      setUnit('kg');
+    }
+  };
 
   // Record to Expense Confirmation Modal
   const [expenseItem, setExpenseItem] = useState<ShoppingItem | null>(null);
@@ -436,6 +485,8 @@ export const ShoppingListManager: React.FC = () => {
     setCategory('Umum');
     setQuantity(1);
     setUnit('kg');
+    setShowAddUnitInline(false);
+    setNewCustomUnitInput('');
     setEstimatedPrice('');
     setActualPrice('');
     setPriority('NORMAL');
@@ -451,6 +502,8 @@ export const ShoppingListManager: React.FC = () => {
     setCategory(item.category);
     setQuantity(item.quantity);
     setUnit(item.unit);
+    setShowAddUnitInline(false);
+    setNewCustomUnitInput('');
     setEstimatedPrice(item.estimatedPrice || '');
     setActualPrice(item.actualPrice || '');
     setPriority(item.priority);
@@ -465,6 +518,12 @@ export const ShoppingListManager: React.FC = () => {
     if (!name.trim()) return;
 
     const dateToUse = shoppingDate || new Date().toISOString().slice(0, 10);
+    const finalUnit = (unit.trim() || 'kg').toLowerCase();
+
+    // Auto-save manual unit if not already registered
+    if (!COMMON_UNITS.includes(finalUnit) && !customUnits.includes(finalUnit)) {
+      setCustomUnits(prev => [...prev, finalUnit]);
+    }
 
     const estAmount = parseRupiahInput(estimatedPrice);
     const actAmount = actualPrice !== '' ? parseRupiahInput(actualPrice) : undefined;
@@ -474,7 +533,7 @@ export const ShoppingListManager: React.FC = () => {
         name: name.trim(),
         category: category || 'Umum',
         quantity: Number(quantity) || 1,
-        unit,
+        unit: finalUnit,
         estimatedPrice: estAmount,
         actualPrice: actAmount,
         priority,
@@ -487,7 +546,7 @@ export const ShoppingListManager: React.FC = () => {
         name: name.trim(),
         category: category || 'Umum',
         quantity: Number(quantity) || 1,
-        unit,
+        unit: finalUnit,
         estimatedPrice: estAmount,
         actualPrice: actAmount,
         priority,
@@ -2553,18 +2612,137 @@ export const ShoppingListManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Satuan
-                  </label>
-                  <select
-                    value={unit}
-                    onChange={e => setUnit(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:ring-2 focus:ring-blue-500"
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Satuan *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddUnitInline(!showAddUnitInline);
+                        setNewCustomUnitInput('');
+                      }}
+                      className="text-[10px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5"
+                    >
+                      <Plus size={10} />
+                      <span>{showAddUnitInline ? 'Pilih Satuan' : '+ Satuan Baru'}</span>
+                    </button>
+                  </div>
+
+                  {showAddUnitInline ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        placeholder="Contoh: bal, sak, jerigen..."
+                        value={newCustomUnitInput}
+                        onChange={e => setNewCustomUnitInput(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border-2 border-blue-400 bg-blue-50/50 rounded-xl text-xs text-slate-900 font-bold focus:ring-2 focus:ring-blue-500"
+                        autoFocus
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddCustomUnit();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddCustomUnit}
+                        disabled={!newCustomUnitInput.trim()}
+                        className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shrink-0"
+                      >
+                        Gunakan
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <input
+                        type="text"
+                        list="shopping-unit-datalist"
+                        value={unit}
+                        onChange={e => setUnit(e.target.value)}
+                        placeholder="Ketik/pilih satuan..."
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-900 font-semibold focus:ring-2 focus:ring-blue-500 bg-white"
+                      />
+                      <datalist id="shopping-unit-datalist">
+                        {allAvailableUnits.map(u => (
+                          <option key={u} value={u} />
+                        ))}
+                      </datalist>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Quick Selectable Unit Chips (Presets + Custom Units) */}
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 -mt-1 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-slate-500 font-semibold">
+                    Pilihan Cepat Satuan:
+                  </span>
+                  <span className="text-[9px] text-slate-400">
+                    Bisa ketik manual bebas di atas
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  {['kg', 'ikat', 'liter', 'pcs', 'pack', 'dus', 'karpet', 'bungkus'].map(u => (
+                    <button
+                      key={u}
+                      type="button"
+                      onClick={() => {
+                        setUnit(u);
+                        setShowAddUnitInline(false);
+                      }}
+                      className={`px-2 py-0.5 text-[10px] font-semibold rounded-md transition ${
+                        unit.toLowerCase() === u.toLowerCase()
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-white border border-slate-200 hover:bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      {u}
+                    </button>
+                  ))}
+
+                  {/* Custom Units with Delete Badge */}
+                  {customUnits.map(u => (
+                    <div key={u} className="inline-flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUnit(u);
+                          setShowAddUnitInline(false);
+                        }}
+                        className={`px-2 py-0.5 text-[10px] font-semibold rounded-l-md transition ${
+                          unit.toLowerCase() === u.toLowerCase()
+                            ? 'bg-purple-600 text-white shadow-xs'
+                            : 'bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200'
+                        }`}
+                        title="Satuan manual tersimpan"
+                      >
+                        {u}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeCustomUnit(u)}
+                        className="px-1 py-0.5 text-[9px] bg-purple-100 hover:bg-rose-200 text-purple-700 hover:text-rose-700 rounded-r-md border border-l-0 border-purple-200 transition"
+                        title={`Hapus satuan "${u}" dari daftar`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddUnitInline(true);
+                      setNewCustomUnitInput('');
+                    }}
+                    className="px-2 py-0.5 text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition flex items-center gap-0.5"
                   >
-                    {COMMON_UNITS.map(u => (
-                      <option key={u} value={u}>{u}</option>
-                    ))}
-                  </select>
+                    <Plus size={10} />
+                    <span>+ Tambah</span>
+                  </button>
                 </div>
               </div>
 

@@ -12,6 +12,7 @@ import {
   ExpenseCategory,
   CloudSyncState,
   DepositRecord,
+  PaymentRecord,
   AppUser,
   DiscountType,
   ManualJournalEntry,
@@ -244,6 +245,12 @@ interface WarungContextType {
   updateCustomer: (id: string, customer: Partial<Customer>) => void;
   deleteCustomer: (id: string) => void;
   settleCustomerDebt: (customerId: string, amount: number, notes?: string) => void;
+  settleTransactionDebt: (
+    transactionId: string,
+    amount: number,
+    notes?: string,
+    paymentMethod?: 'TUNAI' | 'TRANSFER' | 'SALDO_DEPOSIT' | 'LAINNYA'
+  ) => { success: boolean; message: string; remaining: number };
   topUpCustomerDeposit: (customerId: string, amount: number, paymentMethod?: 'TUNAI' | 'TRANSFER' | 'QRIS', notes?: string) => void;
 
   // Store Settings & Cloud Sync
@@ -2319,6 +2326,8 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, []);
 
   const settleCustomerDebt = useCallback((customerId: string, amount: number, notes?: string) => {
+    if (amount <= 0) return;
+
     setCustomers(prev =>
       prev.map(c => {
         if (c.id === customerId) {
@@ -2331,23 +2340,32 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       })
     );
 
-    // Also mark unpaid transactions of this customer as paid if fully settled
+    // Also distribute settlement to unpaid transactions of this customer
     setTransactions(prev => {
       let remainingToSettle = amount;
       return prev.map(trx => {
         if (trx.customerId === customerId && trx.status === 'BELUM_LUNAS' && remainingToSettle > 0) {
-          if (remainingToSettle >= trx.finalAmount) {
-            remainingToSettle -= trx.finalAmount;
+          const netBill = Math.max(0, trx.finalAmount - (trx.totalReturnedAmount || 0));
+          const alreadyPaid = (trx.paymentHistory || []).reduce((s, p) => s + p.amount, 0);
+          const billRemaining = Math.max(0, netBill - alreadyPaid);
+          if (billRemaining > 0) {
+            const payForThis = Math.min(remainingToSettle, billRemaining);
+            remainingToSettle -= payForThis;
+            const newRemaining = Math.max(0, billRemaining - payForThis);
             const updatedTrx: Transaction = {
               ...trx,
-              status: 'LUNAS',
+              status: newRemaining === 0 ? 'LUNAS' : 'BELUM_LUNAS',
+              amountPaid: (trx.amountPaid || 0) + payForThis,
               paymentHistory: [
                 ...(trx.paymentHistory || []),
                 {
-                  id: 'pay-' + Date.now(),
+                  id: 'pay-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
                   date: new Date().toISOString(),
-                  amount: trx.finalAmount,
-                  notes: notes || 'Pelunasan Kasbon',
+                  amount: payForThis,
+                  paymentMethod: 'TUNAI',
+                  notes: notes || `Pelunasan Kasbon Pelanggan (${newRemaining === 0 ? 'Lunas' : 'Sebagian'})`,
+                  remainingAmountAfter: newRemaining,
+                  receivedBy: currentUser?.name || storeSettings.cashierName,
                 },
               ],
             };
@@ -2358,7 +2376,107 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         return trx;
       });
     });
-  }, []);
+  }, [currentUser, storeSettings]);
+
+  const settleTransactionDebt = useCallback((
+    transactionId: string,
+    amount: number,
+    notes?: string,
+    paymentMethod: 'TUNAI' | 'TRANSFER' | 'SALDO_DEPOSIT' | 'LAINNYA' = 'TUNAI'
+  ) => {
+    let result = { success: false, message: 'Transaksi tidak ditemukan', remaining: 0 };
+
+    setTransactions(prev => {
+      const trxIndex = prev.findIndex(t => t.id === transactionId);
+      if (trxIndex === -1) return prev;
+
+      const targetTrx = prev[trxIndex];
+      const netBill = Math.max(0, targetTrx.finalAmount - (targetTrx.totalReturnedAmount || 0));
+      const alreadyPaid = (targetTrx.paymentHistory || []).reduce((s, p) => s + p.amount, 0);
+      const currentRemaining = Math.max(0, netBill - alreadyPaid);
+
+      if (currentRemaining <= 0) {
+        result = { success: false, message: 'Nota tagihan ini sudah lunas sebelumnya.', remaining: 0 };
+        return prev;
+      }
+
+      if (amount <= 0) {
+        result = { success: false, message: 'Nominal pembayaran harus lebih dari 0.', remaining: currentRemaining };
+        return prev;
+      }
+
+      const payAmount = Math.min(amount, currentRemaining);
+      const newRemaining = Math.max(0, currentRemaining - payAmount);
+      const isNowFullyPaid = newRemaining === 0;
+
+      // Handle customer updates (deposit and totalDebt)
+      if (targetTrx.customerId) {
+        setCustomers(cPrev =>
+          cPrev.map(c => {
+            if (c.id === targetTrx.customerId) {
+              let updatedDeposit = c.depositBalance || 0;
+              const depositHistory = c.depositHistory ? [...c.depositHistory] : [];
+
+              if (paymentMethod === 'SALDO_DEPOSIT') {
+                updatedDeposit = Math.max(0, updatedDeposit - payAmount);
+                depositHistory.unshift({
+                  id: 'dep-' + Date.now(),
+                  timestamp: new Date().toISOString(),
+                  type: 'USAGE',
+                  amount: payAmount,
+                  notes: `Bayar Kasbon Nota ${targetTrx.invoiceNumber}`,
+                  remainingBalance: updatedDeposit,
+                });
+              }
+
+              const updatedCust: Customer = {
+                ...c,
+                totalDebt: Math.max(0, c.totalDebt - payAmount),
+                depositBalance: updatedDeposit,
+                depositHistory: depositHistory,
+              };
+              saveCustomerToFirestore(updatedCust);
+              return updatedCust;
+            }
+            return c;
+          })
+        );
+      }
+
+      const newPayment: PaymentRecord = {
+        id: 'pay-' + Date.now(),
+        date: new Date().toISOString(),
+        amount: payAmount,
+        paymentMethod,
+        notes: notes || `Pembayaran Nota ${targetTrx.invoiceNumber} (${isNowFullyPaid ? 'Lunas' : 'Sebagian/Cicilan'})`,
+        remainingAmountAfter: newRemaining,
+        receivedBy: currentUser?.name || storeSettings.cashierName,
+      };
+
+      const updatedTrx: Transaction = {
+        ...targetTrx,
+        status: isNowFullyPaid ? 'LUNAS' : 'BELUM_LUNAS',
+        amountPaid: (targetTrx.amountPaid || 0) + payAmount,
+        paymentHistory: [...(targetTrx.paymentHistory || []), newPayment],
+      };
+
+      saveTransactionToFirestore(updatedTrx);
+
+      result = {
+        success: true,
+        message: isNowFullyPaid
+          ? `Pembayaran Rp ${payAmount.toLocaleString('id-ID')} berhasil. Nota ${targetTrx.invoiceNumber} LUNAS!`
+          : `Pembayaran Rp ${payAmount.toLocaleString('id-ID')} berhasil dicatat. Sisa tagihan nota: Rp ${newRemaining.toLocaleString('id-ID')}.`,
+        remaining: newRemaining,
+      };
+
+      const next = [...prev];
+      next[trxIndex] = updatedTrx;
+      return next;
+    });
+
+    return result;
+  }, [currentUser, storeSettings]);
 
   // Shopping Items CRUD
   const addShoppingItem = useCallback((itemData: Omit<ShoppingItem, 'id' | 'createdAt'>): ShoppingItem => {
@@ -3647,6 +3765,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         updateCustomer,
         deleteCustomer,
         settleCustomerDebt,
+        settleTransactionDebt,
         topUpCustomerDeposit,
         updateStoreSettings,
         syncWithCloud,

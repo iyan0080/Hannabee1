@@ -6,6 +6,7 @@ import { ReceiptModal } from './ReceiptModal';
 import { CancelReturnModal } from './CancelReturnModal';
 import { RetroactiveSaleModal } from './RetroactiveSaleModal';
 import { EditTransactionModal } from './EditTransactionModal';
+import { SettleInvoiceDebtModal } from './SettleInvoiceDebtModal';
 import { exportTransactionsToExcel, exportTransactionsToPDF } from '../utils/exportData';
 import {
   Search,
@@ -43,7 +44,6 @@ export const TransactionsView: React.FC = () => {
   const [selectedReceipt, setSelectedReceipt] = useState<Transaction | null>(null);
   const [cancelReturnTrx, setCancelReturnTrx] = useState<Transaction | null>(null);
   const [settlingTrx, setSettlingTrx] = useState<Transaction | null>(null);
-  const [settleNotes, setSettleNotes] = useState('');
 
   // Filtered transactions
   const filteredTransactions = useMemo(() => {
@@ -74,17 +74,6 @@ export const TransactionsView: React.FC = () => {
     const netProfit = Math.max(0, t.grossProfit - retAmt + retCost);
     return s + netProfit;
   }, 0);
-
-  const handleSettleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!settlingTrx) return;
-    if (settlingTrx.customerId) {
-      const netDebt = Math.max(0, settlingTrx.finalAmount - (settlingTrx.totalReturnedAmount || 0));
-      settleCustomerDebt(settlingTrx.customerId, netDebt, settleNotes || 'Pelunasan Kasbon Nota ' + settlingTrx.invoiceNumber);
-    }
-    setSettlingTrx(null);
-    setSettleNotes('');
-  };
 
   const [copiedWa, setCopiedWa] = useState(false);
   const handleCopyTransactionsSummary = () => {
@@ -333,6 +322,20 @@ export const TransactionsView: React.FC = () => {
                       {trx.discount > 0 && (
                         <div className="text-[10px] text-red-500 font-medium mt-0.5">Diskon: -{formatRupiah(trx.discount)}</div>
                       )}
+                      {isKasbon && (() => {
+                        const netBill = Math.max(0, trx.finalAmount - (returnedAmount || 0));
+                        const alreadyPaid = (trx.paymentHistory || []).reduce((s, p) => s + (p.amount || 0), 0);
+                        const remaining = Math.max(0, netBill - alreadyPaid);
+                        if (alreadyPaid > 0) {
+                          return (
+                            <div className="text-[10px] font-semibold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 mt-1">
+                              <span>Dicicil: {formatRupiah(alreadyPaid)}</span>
+                              <span className="block text-[9px] text-rose-700 font-bold">Sisa: {formatRupiah(remaining)}</span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </td>
 
                     <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -374,9 +377,24 @@ export const TransactionsView: React.FC = () => {
                             🔄 Retur Sebagian
                           </span>
                         ) : isKasbon ? (
-                          <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                            ⏳ Kasbon
-                          </span>
+                          (() => {
+                            const netBill = Math.max(0, trx.finalAmount - (returnedAmount || 0));
+                            const alreadyPaid = (trx.paymentHistory || []).reduce((s, p) => s + (p.amount || 0), 0);
+                            const remaining = Math.max(0, netBill - alreadyPaid);
+                            const isPartial = alreadyPaid > 0 && remaining > 0;
+                            return (
+                              <span
+                                className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                  isPartial
+                                    ? 'bg-orange-100 text-orange-900 border-orange-300'
+                                    : 'bg-amber-100 text-amber-800 border-amber-300'
+                                }`}
+                                title={isPartial ? `Sudah dicicil: ${formatRupiah(alreadyPaid)}, Sisa: ${formatRupiah(remaining)}` : 'Belum dibayar'}
+                              >
+                                {isPartial ? `⏳ Cicil (Sisa ${formatRupiah(remaining)})` : '⏳ Kasbon'}
+                              </span>
+                            );
+                          })()
                         ) : (
                           <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                             ✓ Lunas
@@ -422,10 +440,10 @@ export const TransactionsView: React.FC = () => {
                           <button
                             id={`settle-trx-${trx.id}`}
                             onClick={() => setSettlingTrx(trx)}
-                            className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-semibold transition"
-                            title="Lunasi Kasbon Ini"
+                            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold shadow-xs transition flex items-center gap-1"
+                            title="Bayar / Lunasi Tagihan Nota Ini (Sebagian atau Seluruhnya)"
                           >
-                            Lunasi
+                            <span>Bayar</span>
                           </button>
                         )}
 
@@ -461,73 +479,12 @@ export const TransactionsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Settle Debt Modal */}
+      {/* Settle Debt Modal (Per Nota: Sebagian atau Seluruhnya) */}
       {settlingTrx && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-slate-200">
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
-              <h3 className="font-bold text-sm">Pelunasan Kasbon Nota</h3>
-              <button onClick={() => setSettlingTrx(null)} className="text-slate-400 hover:text-white">
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={handleSettleSubmit} className="p-4 space-y-3 text-xs">
-              <div className="bg-amber-50 p-3 rounded-xl border border-amber-200">
-                <div className="flex justify-between text-slate-700">
-                  <span>No. Nota:</span>
-                  <span className="font-bold font-mono">{settlingTrx.invoiceNumber}</span>
-                </div>
-                <div className="flex justify-between text-slate-700 mt-1">
-                  <span>Pelanggan:</span>
-                  <span className="font-semibold">{settlingTrx.customerName}</span>
-                </div>
-                <div className="flex justify-between items-start text-amber-900 font-bold mt-2 pt-2 border-t border-amber-200">
-                  <span>Total Tagihan:</span>
-                  <div className="text-right">
-                    <span className="font-mono text-sm">
-                      {formatRupiah(Math.max(0, settlingTrx.finalAmount - (settlingTrx.totalReturnedAmount || 0)))}
-                    </span>
-                    {settlingTrx.totalReturnedAmount && settlingTrx.totalReturnedAmount > 0 && (
-                      <div className="text-[10px] text-indigo-700 font-medium">
-                        (Setelah dikurangi retur: -{formatRupiah(settlingTrx.totalReturnedAmount)})
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Catatan Pelunasan:
-                </label>
-                <input
-                  type="text"
-                  placeholder="Contoh: Diterima tunai di warung"
-                  value={settleNotes}
-                  onChange={e => setSettleNotes(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs"
-                />
-              </div>
-
-              <div className="pt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSettlingTrx(null)}
-                  className="flex-1 px-3 py-2 border border-slate-200 text-slate-600 rounded-xl font-medium"
-                >
-                  Batal
-                </button>
-                <button
-                  id="confirm-settle-btn"
-                  type="submit"
-                  className="flex-1 px-3 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700"
-                >
-                  Konfirmasi Lunas
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <SettleInvoiceDebtModal
+          transaction={settlingTrx}
+          onClose={() => setSettlingTrx(null)}
+        />
       )}
 
       {/* Cancel & Return Modal */}
