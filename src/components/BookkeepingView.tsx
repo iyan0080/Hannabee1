@@ -118,6 +118,11 @@ export const BookkeepingView: React.FC = () => {
   // Modal State for Manual Entry
   const [isEntryModalOpen, setIsEntryModalOpen] = useState<boolean>(false);
   const [entryType, setEntryType] = useState<JournalEntryType>('KAS_MASUK');
+  const [entryDate, setEntryDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [entryTime, setEntryTime] = useState<string>(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  });
   const [entryCategory, setEntryCategory] = useState<string>('Modal Awal / Tambahan Modal');
   const [entryTitle, setEntryTitle] = useState<string>('');
   const [entryAmount, setEntryAmount] = useState<string>('');
@@ -381,8 +386,17 @@ export const BookkeepingView: React.FC = () => {
       return;
     }
 
+    // Build timestamp from entryDate and entryTime
+    let finalTimestamp = new Date().toISOString();
+    if (entryDate) {
+      const [year, month, day] = entryDate.split('-').map(Number);
+      const [hours, minutes] = (entryTime || '12:00').split(':').map(Number);
+      const targetDate = new Date(year, month - 1, day, hours || 0, minutes || 0, 0);
+      finalTimestamp = isNaN(targetDate.getTime()) ? new Date().toISOString() : targetDate.toISOString();
+    }
+
     addManualJournalEntry({
-      timestamp: new Date().toISOString(),
+      timestamp: finalTimestamp,
       type: entryType,
       category: entryCategory,
       title: entryTitle.trim(),
@@ -398,6 +412,11 @@ export const BookkeepingView: React.FC = () => {
     setEntryAmount('');
     setEntryParty('');
     setEntryNotes('');
+    setEntryDate(new Date().toISOString().slice(0, 10));
+    setEntryTime(() => {
+      const d = new Date();
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    });
     setIsEntryModalOpen(false);
   };
 
@@ -447,6 +466,9 @@ export const BookkeepingView: React.FC = () => {
               setEntryType('KAS_MASUK');
               const firstCat = bookkeepingCategories.find(c => c.type === 'KAS_MASUK');
               setEntryCategory(firstCat ? firstCat.name : 'Modal Awal / Tambahan Modal');
+              const now = new Date();
+              setEntryDate(now.toISOString().slice(0, 10));
+              setEntryTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
               setIsEntryModalOpen(true);
             }}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-xs transition-colors"
@@ -460,6 +482,9 @@ export const BookkeepingView: React.FC = () => {
               setEntryType('KAS_KELUAR');
               const firstCat = bookkeepingCategories.find(c => c.type === 'KAS_KELUAR');
               setEntryCategory(firstCat ? firstCat.name : 'Prive / Penarikan Pemilik');
+              const now = new Date();
+              setEntryDate(now.toISOString().slice(0, 10));
+              setEntryTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
               setIsEntryModalOpen(true);
             }}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold shadow-xs transition-colors"
@@ -1677,6 +1702,63 @@ export const BookkeepingView: React.FC = () => {
                 >
                   - Kas Keluar
                 </button>
+              </div>
+
+              {/* Tanggal & Waktu Transaksi */}
+              <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Tanggal & Waktu Transaksi *</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const todayStr = new Date().toISOString().slice(0, 10);
+                        setEntryDate(todayStr);
+                      }}
+                      className={`px-2 py-0.5 text-[10px] font-semibold rounded-md transition ${
+                        entryDate === new Date().toISOString().slice(0, 10)
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      Hari Ini
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const yesterday = new Date();
+                        yesterday.setDate(yesterday.getDate() - 1);
+                        setEntryDate(yesterday.toISOString().slice(0, 10));
+                      }}
+                      className="px-2 py-0.5 text-[10px] font-semibold rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 transition"
+                    >
+                      Kemarin
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <input
+                      type="date"
+                      required
+                      value={entryDate}
+                      onChange={e => setEntryDate(e.target.value)}
+                      className="w-full px-3 py-2 text-xs font-semibold text-slate-800 rounded-xl border border-slate-200 bg-white focus:outline-hidden focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="time"
+                      value={entryTime}
+                      onChange={e => setEntryTime(e.target.value)}
+                      className="w-full px-3 py-2 text-xs font-semibold text-slate-800 rounded-xl border border-slate-200 bg-white focus:outline-hidden focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Category */}
