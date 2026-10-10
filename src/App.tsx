@@ -353,14 +353,14 @@ function MainApp() {
       {/* Confirmation Modal to Exit Application */}
       {showExitConfirmModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150 cursor-pointer"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150 cursor-pointer overflow-y-auto"
           onClick={() => setShowExitConfirmModal(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200 cursor-default"
+            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200 cursor-default my-auto max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2">
                 <span className="w-7 h-7 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center">
                   <LogOut size={16} />

@@ -467,10 +467,10 @@ export const SettingsView: React.FC = () => {
 
       {/* Security Password Modal for Database Reset / Data Deletion */}
       {resetModalType && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 animate-fade-in overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 my-auto max-h-[90vh] flex flex-col">
             {/* Header */}
-            <div className={`p-4 sm:p-5 text-white flex items-center justify-between ${
+            <div className={`p-4 sm:p-5 text-white flex items-center justify-between shrink-0 ${
               resetModalType === 'ALL_DATABASE' ? 'bg-red-600' : 'bg-amber-600'
             }`}>
               <div className="flex items-center gap-2.5">
@@ -532,7 +532,7 @@ export const SettingsView: React.FC = () => {
                   alert(res.message);
                 }
               }}
-              className="p-5 sm:p-6 space-y-4 text-xs"
+              className="p-5 sm:p-6 space-y-4 text-xs overflow-y-auto"
             >
               {/* Warning Notice Box */}
               <div className={`p-3.5 rounded-2xl border text-xs leading-relaxed ${

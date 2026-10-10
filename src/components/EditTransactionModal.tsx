@@ -811,9 +811,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
       {/* Variant Selector Modal Popup */}
       {selectedProductToAdd && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-4 border border-slate-200 space-y-3">
-            <div className="flex justify-between items-center">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-4 border border-slate-200 space-y-3 my-auto max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center shrink-0">
               <h4 className="font-bold text-slate-900 text-sm">
                 Pilih Varian: {selectedProductToAdd.name}
               </h4>

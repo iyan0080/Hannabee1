@@ -89,6 +89,7 @@ import {
   clearSalesAndCashFirestoreDocuments,
   pushFullDatabaseToFirestore,
 } from '../services/firestoreSync';
+import { formatRupiah } from '../utils/format';
 
 export const MASTER_RESET_PASSWORD = 'Hannaa1224@';
 
@@ -249,9 +250,18 @@ interface WarungContextType {
     transactionId: string,
     amount: number,
     notes?: string,
-    paymentMethod?: 'TUNAI' | 'TRANSFER' | 'SALDO_DEPOSIT' | 'LAINNYA'
+    paymentMethod?: 'TUNAI' | 'TRANSFER' | 'SALDO_DEPOSIT' | 'LAINNYA',
+    paymentDate?: string
   ) => { success: boolean; message: string; remaining: number };
   topUpCustomerDeposit: (customerId: string, amount: number, paymentMethod?: 'TUNAI' | 'TRANSFER' | 'QRIS', notes?: string) => void;
+  cancelCustomerDeposit: (params: {
+    customerId: string;
+    amount: number;
+    depositRecordId?: string;
+    reason?: string;
+    refundMethod?: 'TUNAI' | 'TRANSFER' | 'QRIS';
+    notes?: string;
+  }) => { success: boolean; message: string; remainingDeposit: number };
 
   // Store Settings & Cloud Sync
   updateStoreSettings: (settings: Partial<StoreSettings>) => void;
@@ -2325,6 +2335,94 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     );
   }, []);
 
+  const cancelCustomerDeposit = useCallback((params: {
+    customerId: string;
+    amount: number;
+    depositRecordId?: string;
+    reason?: string;
+    refundMethod?: 'TUNAI' | 'TRANSFER' | 'QRIS';
+    notes?: string;
+  }) => {
+    const { customerId, amount, depositRecordId, reason, refundMethod = 'TUNAI', notes } = params;
+    let result = { success: false, message: 'Pelanggan tidak ditemukan.', remainingDeposit: 0 };
+
+    setCustomers(prev =>
+      prev.map(c => {
+        if (c.id === customerId) {
+          const currentBal = c.depositBalance || 0;
+
+          if (amount <= 0) {
+            result = {
+              success: false,
+              message: 'Nominal pembatalan harus lebih besar dari Rp 0.',
+              remainingDeposit: currentBal,
+            };
+            return c;
+          }
+
+          if (currentBal < amount) {
+            result = {
+              success: false,
+              message: `Saldo deposit pelanggan saat ini (${formatRupiah(currentBal)}) tidak mencukupi untuk membatalkan ${formatRupiah(amount)}.`,
+              remainingDeposit: currentBal,
+            };
+            return c;
+          }
+
+          const newDeposit = Math.max(0, currentBal - amount);
+          const history = c.depositHistory ? [...c.depositHistory] : [];
+
+          // If a specific depositRecordId was targeted, mark it as cancelled
+          if (depositRecordId) {
+            const targetIdx = history.findIndex(r => r.id === depositRecordId);
+            if (targetIdx !== -1) {
+              history[targetIdx] = {
+                ...history[targetIdx],
+                isCancelled: true,
+                cancelledAt: new Date().toISOString(),
+                cancelledBy: currentUser?.name || storeSettings.cashierName,
+                cancelReason: reason || 'Dibatalkan oleh kasir',
+              };
+            }
+          }
+
+          const cancelRecord: DepositRecord = {
+            id: 'dep-cancel-' + Date.now(),
+            timestamp: new Date().toISOString(),
+            type: 'CANCEL_TOPUP',
+            amount,
+            paymentMethod: refundMethod,
+            notes: notes || (reason ? `Pembatalan Deposit: ${reason}` : 'Pembatalan Saldo Deposit'),
+            remainingBalance: newDeposit,
+            balanceAfter: newDeposit,
+            referenceDepositId: depositRecordId,
+            cancelReason: reason,
+            cancelledBy: currentUser?.name || storeSettings.cashierName,
+          };
+
+          const updatedCust: Customer = {
+            ...c,
+            depositBalance: newDeposit,
+            depositHistory: [cancelRecord, ...history],
+          };
+
+          saveCustomerToFirestore(updatedCust);
+
+          result = {
+            success: true,
+            message: `Deposit sebesar ${formatRupiah(amount)} berhasil dibatalkan. Sisa saldo pelanggan: ${formatRupiah(newDeposit)}.`,
+            remainingDeposit: newDeposit,
+          };
+
+          return updatedCust;
+        }
+        return c;
+      })
+    );
+
+    return result;
+  }, [currentUser, storeSettings]);
+
   const settleCustomerDebt = useCallback((customerId: string, amount: number, notes?: string) => {
     if (amount <= 0) return;
 
@@ -2382,7 +2480,8 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     transactionId: string,
     amount: number,
     notes?: string,
-    paymentMethod: 'TUNAI' | 'TRANSFER' | 'SALDO_DEPOSIT' | 'LAINNYA' = 'TUNAI'
+    paymentMethod: 'TUNAI' | 'TRANSFER' | 'SALDO_DEPOSIT' | 'LAINNYA' = 'TUNAI',
+    paymentDate?: string
   ) => {
     let result = { success: false, message: 'Transaksi tidak ditemukan', remaining: 0 };
 
@@ -2408,6 +2507,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const payAmount = Math.min(amount, currentRemaining);
       const newRemaining = Math.max(0, currentRemaining - payAmount);
       const isNowFullyPaid = newRemaining === 0;
+      const finalPaymentDate = paymentDate || new Date().toISOString();
 
       // Handle customer updates (deposit and totalDebt)
       if (targetTrx.customerId) {
@@ -2421,7 +2521,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 updatedDeposit = Math.max(0, updatedDeposit - payAmount);
                 depositHistory.unshift({
                   id: 'dep-' + Date.now(),
-                  timestamp: new Date().toISOString(),
+                  timestamp: finalPaymentDate,
                   type: 'USAGE',
                   amount: payAmount,
                   notes: `Bayar Kasbon Nota ${targetTrx.invoiceNumber}`,
@@ -2445,7 +2545,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
       const newPayment: PaymentRecord = {
         id: 'pay-' + Date.now(),
-        date: new Date().toISOString(),
+        date: finalPaymentDate,
         amount: payAmount,
         paymentMethod,
         notes: notes || `Pembayaran Nota ${targetTrx.invoiceNumber} (${isNowFullyPaid ? 'Lunas' : 'Sebagian/Cicilan'})`,
@@ -3013,7 +3113,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     customers.forEach(c => {
       if (c.depositHistory && c.depositHistory.length > 0) {
         c.depositHistory.forEach(dep => {
-          if (dep.type === 'TOPUP') {
+          if (dep.type === 'TOPUP' || dep.type === 'TOP_UP') {
             let account: CashAccountType = 'KAS_TUNAI';
             let accountLabel = 'Kas Tunai (Laci)';
             if (dep.paymentMethod === 'QRIS') {
@@ -3030,7 +3130,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               dateStr: dep.timestamp.slice(0, 10),
               type: 'KAS_MASUK',
               category: 'Top-Up Saldo Deposit',
-              title: `Auto-Jurnal: Top-Up Saldo Deposit - ${c.name}`,
+              title: `Auto-Jurnal: Top-Up Saldo Deposit - ${c.name}${dep.isCancelled ? ' (Dibatalkan)' : ''}`,
               amount: dep.amount,
               account,
               accountLabel,
@@ -3041,6 +3141,35 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               customerName: c.name,
               notes: dep.notes || `Top up saldo deposit pelanggan ${c.name}`,
               actorName: 'Kasir',
+            });
+          } else if (dep.type === 'CANCEL_TOPUP' || dep.type === 'REFUND') {
+            let account: CashAccountType = 'KAS_TUNAI';
+            let accountLabel = 'Kas Tunai (Laci)';
+            if (dep.paymentMethod === 'QRIS') {
+              account = 'QRIS';
+              accountLabel = 'QRIS';
+            } else if (dep.paymentMethod === 'TRANSFER') {
+              account = 'BANK_TRANSFER';
+              accountLabel = 'Rekening Bank';
+            }
+
+            rawItems.push({
+              id: `dep-cancel-${dep.id}`,
+              timestamp: dep.timestamp,
+              dateStr: dep.timestamp.slice(0, 10),
+              type: 'KAS_KELUAR',
+              category: 'Pengembalian Saldo Deposit',
+              title: `Auto-Jurnal: Pembatalan Saldo Deposit - ${c.name}`,
+              amount: dep.amount,
+              account,
+              accountLabel,
+              referenceType: 'DEPOSIT_TOPUP',
+              referenceId: dep.id,
+              sourceType: 'CUSTOMER_DEPOSIT_TOPUP',
+              isAutoJournal: true,
+              customerName: c.name,
+              notes: dep.notes || `Pembatalan saldo deposit pelanggan ${c.name}`,
+              actorName: dep.cancelledBy || 'Kasir',
             });
           }
         });
@@ -3767,6 +3896,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         settleCustomerDebt,
         settleTransactionDebt,
         topUpCustomerDeposit,
+        cancelCustomerDeposit,
         updateStoreSettings,
         syncWithCloud,
         clearAllDatabase,

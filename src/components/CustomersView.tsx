@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useRegisterModal } from '../context/ModalContext';
 import { useWarung } from '../context/WarungContext';
-import { Customer, CustomerType, DiscountType, Transaction } from '../types';
+import { Customer, CustomerType, DiscountType, Transaction, DepositRecord } from '../types';
 import { SettleInvoiceDebtModal } from './SettleInvoiceDebtModal';
 import {
   formatRupiah,
@@ -10,6 +10,7 @@ import {
   generateBillWhatsAppText,
   generatePromoWhatsAppText,
   generateTopUpReceiptWhatsAppText,
+  generateCancelDepositReceiptWhatsAppText,
   openWhatsApp,
 } from '../utils/format';
 import { exportCustomersToExcel } from '../utils/exportData';
@@ -35,6 +36,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   PlusCircle,
+  RotateCcw,
   Receipt,
   Store,
   Tag,
@@ -52,6 +54,7 @@ export const CustomersView: React.FC = () => {
     deleteCustomer,
     settleCustomerDebt,
     topUpCustomerDeposit,
+    cancelCustomerDeposit,
     storeSettings,
   } = useWarung();
 
@@ -117,14 +120,31 @@ export const CustomersView: React.FC = () => {
   const [settleNotes, setSettleNotes] = useState('');
   const [settlingInvoiceTrx, setSettlingInvoiceTrx] = useState<Transaction | null>(null);
 
+  // Cancel Deposit Modal State
+  const [cancelCustomer, setCancelCustomer] = useState<Customer | null>(null);
+  const [cancelTargetRecord, setCancelTargetRecord] = useState<DepositRecord | null>(null);
+  const [cancelAmount, setCancelAmount] = useState<number | ''>('');
+  const [cancelRefundMethod, setCancelRefundMethod] = useState<'TUNAI' | 'TRANSFER' | 'QRIS'>('TUNAI');
+  const [cancelReason, setCancelReason] = useState('Salah Input Nominal Top-Up');
+  const [cancelNotes, setCancelNotes] = useState('');
+  const [sendWaAfterCancel, setSendWaAfterCancel] = useState(true);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
   // Register all modals to back button and escape navigation
   useRegisterModal(showModal, () => setShowModal(false), 'cust-add-edit-modal');
   useRegisterModal(Boolean(topUpCustomer), () => setTopUpCustomer(null), 'cust-topup-modal');
   useRegisterModal(Boolean(historyCustomer), () => setHistoryCustomer(null), 'cust-history-modal');
+  useRegisterModal(Boolean(cancelCustomer), () => setCancelCustomer(null), 'cust-cancel-deposit-modal');
   useRegisterModal(Boolean(billCustomer), () => setBillCustomer(null), 'cust-bill-modal');
   useRegisterModal(Boolean(promoCustomer), () => setPromoCustomer(null), 'cust-promo-modal');
   useRegisterModal(Boolean(settlingCustomer), () => setSettlingCustomer(null), 'cust-settle-modal');
   useRegisterModal(Boolean(settlingInvoiceTrx), () => setSettlingInvoiceTrx(null), 'cust-settle-invoice-modal');
+
+  // Reactively track the current customer for deposit history modal
+  const activeHistoryCust = useMemo(() => {
+    if (!historyCustomer) return null;
+    return customers.find(c => c.id === historyCustomer.id) || historyCustomer;
+  }, [customers, historyCustomer]);
 
   const filteredCustomers = useMemo(() => {
     return customers.filter(c => {
@@ -234,6 +254,87 @@ export const CustomersView: React.FC = () => {
     setTopUpCustomer(null);
     setTopUpAmount('');
     setTopUpNotes('');
+  };
+
+  // Open Cancel Deposit Modal
+  const openCancelDepositModal = (customer: Customer, targetRecord?: DepositRecord) => {
+    setCancelCustomer(customer);
+    setCancelError(null);
+    if (targetRecord) {
+      setCancelTargetRecord(targetRecord);
+      const maxAmt = Math.min(targetRecord.amount, customer.depositBalance || 0);
+      setCancelAmount(maxAmt > 0 ? maxAmt : '');
+      setCancelReason('Salah Input Nominal Top-Up');
+      setCancelRefundMethod((targetRecord.paymentMethod as any) || 'TUNAI');
+    } else {
+      setCancelTargetRecord(null);
+      setCancelAmount(customer.depositBalance || '');
+      setCancelReason('Pelanggan Ingin Tarik Sisa Saldo');
+      setCancelRefundMethod('TUNAI');
+    }
+    setCancelNotes('');
+    setSendWaAfterCancel(true);
+  };
+
+  // Cancel Deposit Submit
+  const handleCancelDepositSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cancelCustomer || !cancelAmount || Number(cancelAmount) <= 0) return;
+
+    const amt = Number(cancelAmount);
+    const currentBal = cancelCustomer.depositBalance || 0;
+
+    if (amt > currentBal) {
+      setCancelError(`Nominal pembatalan (${formatRupiah(amt)}) melebihi saldo aktif saat ini (${formatRupiah(currentBal)}).`);
+      return;
+    }
+
+    const res = cancelCustomerDeposit({
+      customerId: cancelCustomer.id,
+      amount: amt,
+      depositRecordId: cancelTargetRecord?.id,
+      reason: cancelReason,
+      refundMethod: cancelRefundMethod,
+      notes: cancelNotes,
+    });
+
+    if (res.success) {
+      if (sendWaAfterCancel) {
+        const fullReason = cancelReason + (cancelNotes ? ` - ${cancelNotes}` : '');
+        const msg = generateCancelDepositReceiptWhatsAppText(
+          cancelCustomer,
+          amt,
+          res.remainingDeposit,
+          fullReason,
+          cancelRefundMethod,
+          storeSettings
+        );
+        openWhatsApp(cancelCustomer.phone, msg);
+      }
+
+      setCancelCustomer(null);
+      setCancelTargetRecord(null);
+      setCancelAmount('');
+      setCancelNotes('');
+      setCancelError(null);
+    } else {
+      setCancelError(res.message);
+    }
+  };
+
+  // Re-send WA for cancelled deposit record
+  const handleResendCancelDepositReceipt = (customer: Customer, record: DepositRecord) => {
+    const fullReason = record.cancelReason || record.notes || 'Pembatalan deposit';
+    const balAfter = record.balanceAfter ?? record.remainingBalance ?? 0;
+    const msg = generateCancelDepositReceiptWhatsAppText(
+      customer,
+      record.amount,
+      balAfter,
+      fullReason,
+      record.paymentMethod || 'TUNAI',
+      storeSettings
+    );
+    openWhatsApp(customer.phone, msg);
   };
 
   // Generate AI promo text
@@ -517,6 +618,17 @@ export const CustomersView: React.FC = () => {
                           <span>Top-Up</span>
                         </button>
 
+                        {depositBal > 0 && (
+                          <button
+                            onClick={() => openCancelDepositModal(customer)}
+                            className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition"
+                            title="Batalkan / Tarik Saldo Deposit"
+                          >
+                            <RotateCcw size={11} />
+                            <span>Batal</span>
+                          </button>
+                        )}
+
                         <button
                           onClick={() => setHistoryCustomer(customer)}
                           className="p-1 text-emerald-800 hover:bg-emerald-100 rounded-lg transition"
@@ -622,14 +734,14 @@ export const CustomersView: React.FC = () => {
       {/* 1. TOP-UP DEPOSIT MODAL */}
       {topUpCustomer && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 cursor-pointer"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto cursor-pointer"
           onClick={() => setTopUpCustomer(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-slate-200 cursor-default"
+            className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-slate-200 cursor-default my-auto max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2">
                 <span className="p-1 bg-emerald-500/20 text-emerald-400 rounded-lg">
                   <Wallet size={16} />
@@ -644,7 +756,7 @@ export const CustomersView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleTopUpSubmit} className="p-4 space-y-3.5 text-xs">
+            <form onSubmit={handleTopUpSubmit} className="p-4 space-y-3.5 text-xs overflow-y-auto">
               {/* Current balance display */}
               <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 flex justify-between items-center">
                 <span className="text-slate-700 font-medium">Saldo Saat Ini:</span>
@@ -775,22 +887,22 @@ export const CustomersView: React.FC = () => {
       )}
 
       {/* 2. DEPOSIT HISTORY MODAL */}
-      {historyCustomer && (
+      {activeHistoryCust && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 cursor-pointer"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto cursor-pointer"
           onClick={() => setHistoryCustomer(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden border border-slate-200 cursor-default"
+            className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden border border-slate-200 cursor-default my-auto max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <div>
                 <h3 className="font-bold text-sm flex items-center gap-1.5">
                   <History size={16} className="text-emerald-400" />
                   Riwayat Mutasi Saldo Deposit
                 </h3>
-                <p className="text-xs text-slate-400">{historyCustomer.name} ({historyCustomer.phone})</p>
+                <p className="text-xs text-slate-400">{activeHistoryCust.name} ({activeHistoryCust.phone})</p>
               </div>
               <button onClick={() => setHistoryCustomer(null)} className="text-slate-400 hover:text-white">
                 <X size={18} />
@@ -798,80 +910,200 @@ export const CustomersView: React.FC = () => {
             </div>
 
             <div className="p-4 space-y-3 text-xs max-h-[70vh] overflow-y-auto">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <span className="text-[10px] text-slate-500 font-semibold block">SALDO AKTIF SAAT INI</span>
                   <span className="text-base font-bold text-emerald-800 font-mono">
-                    {formatRupiah(historyCustomer.depositBalance || 0)}
+                    {formatRupiah(activeHistoryCust.depositBalance || 0)}
                   </span>
                 </div>
-                <button
-                  onClick={() => {
-                    const cust = historyCustomer;
-                    setHistoryCustomer(null);
-                    setTopUpCustomer(cust);
-                  }}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1"
-                >
-                  <PlusCircle size={13} />
-                  <span>+ Top Up Saldo</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {(activeHistoryCust.depositBalance || 0) > 0 && (
+                    <button
+                      onClick={() => openCancelDepositModal(activeHistoryCust)}
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
+                      title="Batalkan atau Tarik Saldo Deposit"
+                    >
+                      <RotateCcw size={13} />
+                      <span>Batal / Tarik Saldo</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      const cust = activeHistoryCust;
+                      setHistoryCustomer(null);
+                      setTopUpCustomer(cust);
+                    }}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs transition"
+                  >
+                    <PlusCircle size={13} />
+                    <span>+ Top Up Saldo</span>
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2">
                 <h5 className="font-semibold text-slate-700 text-[11px] uppercase tracking-wider">
-                  Log Transaksi Saldo ({historyCustomer.depositHistory?.length || 0})
+                  Log Transaksi Saldo ({activeHistoryCust.depositHistory?.length || 0})
                 </h5>
 
-                {!historyCustomer.depositHistory || historyCustomer.depositHistory.length === 0 ? (
+                {!activeHistoryCust.depositHistory || activeHistoryCust.depositHistory.length === 0 ? (
                   <div className="text-center py-6 text-slate-400">
                     <p>Belum ada riwayat transaksi deposit untuk pelanggan ini.</p>
                   </div>
                 ) : (
-                  [...historyCustomer.depositHistory].reverse().map(record => {
-                    const isTopUp = record.type === 'TOP_UP';
+                  [...activeHistoryCust.depositHistory].reverse().map(record => {
+                    const isTopUp = record.type === 'TOP_UP' || record.type === 'TOPUP';
+                    const isCancel = record.type === 'CANCEL_TOPUP';
+                    const isRefund = record.type === 'REFUND';
+
+                    if (isCancel) {
+                      return (
+                        <div
+                          key={record.id}
+                          className="p-3 rounded-xl border border-rose-200 bg-rose-50/50 flex flex-col gap-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2.5">
+                              <div className="w-7 h-7 rounded-lg flex items-center justify-center mt-0.5 bg-rose-100 text-rose-700 shrink-0">
+                                <RotateCcw size={15} />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <p className="font-bold text-rose-900">Pembatalan Saldo Deposit</p>
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                                    DIBATALKAN / DITARIK
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-0.5">{formatDate(record.timestamp)}</p>
+                                {record.cancelReason && (
+                                  <p className="text-[11px] text-rose-800 font-medium mt-1">
+                                    Alasan: <span className="font-normal text-slate-700">{record.cancelReason}</span>
+                                  </p>
+                                )}
+                                {record.notes && record.notes !== record.cancelReason && (
+                                  <p className="text-[10px] text-slate-500 italic mt-0.5">{record.notes}</p>
+                                )}
+                                <p className="text-[10px] text-slate-500 mt-1">
+                                  Kasir: <span className="font-semibold text-slate-700">{record.cancelledBy || 'Kasir'}</span>
+                                  {' • '}Sisa Saldo: <span className="font-mono font-bold text-slate-800">{formatRupiah(record.balanceAfter ?? record.remainingBalance)}</span>
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              <span className="font-mono font-bold text-sm block text-rose-600">
+                                -{formatRupiah(record.amount)}
+                              </span>
+                              {record.paymentMethod && (
+                                <span className="text-[10px] text-slate-500 uppercase block">
+                                  Kembali: {record.paymentMethod}
+                                </span>
+                              )}
+                              <button
+                                onClick={() => handleResendCancelDepositReceipt(activeHistoryCust, record)}
+                                className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded text-[10px] font-medium transition"
+                                title="Kirim Ulang Bukti Pembatalan ke WhatsApp"
+                              >
+                                <MessageCircle size={10} />
+                                <span>Kirim WA</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div
                         key={record.id}
-                        className={`p-3 rounded-xl border flex items-start justify-between ${
-                          isTopUp ? 'bg-emerald-50/40 border-emerald-100' : 'bg-slate-50 border-slate-200'
+                        className={`p-3 rounded-xl border flex flex-col gap-1.5 ${
+                          record.isCancelled
+                            ? 'bg-slate-50 border-slate-200 opacity-80'
+                            : isTopUp
+                            ? 'bg-emerald-50/40 border-emerald-100'
+                            : isRefund
+                            ? 'bg-blue-50/40 border-blue-100'
+                            : 'bg-slate-50 border-slate-200'
                         }`}
                       >
-                        <div className="flex items-start gap-2.5">
-                          <div
-                            className={`w-7 h-7 rounded-lg flex items-center justify-center mt-0.5 ${
-                              isTopUp ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'
-                            }`}
-                          >
-                            {isTopUp ? <ArrowDownRight size={15} /> : <ArrowUpRight size={15} />}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-2.5">
+                            <div
+                              className={`w-7 h-7 rounded-lg flex items-center justify-center mt-0.5 shrink-0 ${
+                                record.isCancelled
+                                  ? 'bg-slate-200 text-slate-500'
+                                  : isTopUp
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : isRefund
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'bg-red-100 text-red-700'
+                              }`}
+                            >
+                              {isTopUp ? <ArrowDownRight size={15} /> : isRefund ? <RotateCcw size={14} /> : <ArrowUpRight size={15} />}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className={`font-semibold ${record.isCancelled ? 'line-through text-slate-500' : 'text-slate-800'}`}>
+                                  {isTopUp
+                                    ? 'Top-Up Saldo'
+                                    : isRefund
+                                    ? 'Refund Pesanan ke Saldo'
+                                    : 'Pembayaran Pesanan (POS)'}
+                                </p>
+                                {record.isCancelled && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                                    DIBATALKAN
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-slate-400">{formatDate(record.timestamp)}</p>
+                              {record.invoiceNumber && (
+                                <p className="text-[10px] text-blue-600 font-mono">Nota: {record.invoiceNumber}</p>
+                              )}
+                              {record.notes && (
+                                <p className="text-[11px] text-slate-500 italic mt-0.5">{record.notes}</p>
+                              )}
+                              {record.isCancelled && record.cancelReason && (
+                                <p className="text-[10px] text-rose-600 mt-0.5">
+                                  Dibatalkan: {record.cancelReason} {record.cancelledBy ? `oleh ${record.cancelledBy}` : ''}
+                                </p>
+                              )}
+                              <p className="text-[10px] text-slate-400 mt-0.5">
+                                Sisa Saldo: <span className="font-mono font-bold text-slate-700">{formatRupiah(record.balanceAfter ?? record.remainingBalance)}</span>
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-semibold text-slate-800">
-                              {isTopUp ? 'Top-Up Saldo' : 'Pembayaran Pesanan (POS)'}
-                            </p>
-                            <p className="text-[10px] text-slate-400">{formatDate(record.timestamp)}</p>
-                            {record.notes && (
-                              <p className="text-[11px] text-slate-500 italic mt-0.5">{record.notes}</p>
-                            )}
-                            <p className="text-[10px] text-slate-400 mt-0.5">
-                              Sisa Saldo: <span className="font-mono font-bold text-slate-700">{formatRupiah(record.balanceAfter)}</span>
-                            </p>
-                          </div>
-                        </div>
 
-                        <div className="text-right">
-                          <span
-                            className={`font-mono font-bold text-sm block ${
-                              isTopUp ? 'text-emerald-700' : 'text-red-600'
-                            }`}
-                          >
-                            {isTopUp ? `+${formatRupiah(record.amount)}` : `-${formatRupiah(record.amount)}`}
-                          </span>
-                          {record.paymentMethod && (
-                            <span className="text-[10px] text-slate-400 uppercase">
-                              via {record.paymentMethod}
+                          <div className="text-right shrink-0">
+                            <span
+                              className={`font-mono font-bold text-sm block ${
+                                record.isCancelled
+                                  ? 'line-through text-slate-400'
+                                  : isTopUp || isRefund
+                                  ? 'text-emerald-700'
+                                  : 'text-red-600'
+                              }`}
+                            >
+                              {isTopUp || isRefund ? `+${formatRupiah(record.amount)}` : `-${formatRupiah(record.amount)}`}
                             </span>
-                          )}
+                            {record.paymentMethod && (
+                              <span className="text-[10px] text-slate-400 uppercase block">
+                                via {record.paymentMethod}
+                              </span>
+                            )}
+                            {/* Tombol Batalkan Top-Up Tertentu */}
+                            {isTopUp && !record.isCancelled && (activeHistoryCust.depositBalance || 0) > 0 && (
+                              <button
+                                onClick={() => openCancelDepositModal(activeHistoryCust, record)}
+                                className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[10px] font-medium transition"
+                                title="Batalkan transaksi top-up deposit ini"
+                              >
+                                <RotateCcw size={10} />
+                                <span>Batalkan Top-Up Ini</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -883,7 +1115,7 @@ export const CustomersView: React.FC = () => {
             <div className="p-3 border-t border-slate-200 bg-slate-50 flex justify-end">
               <button
                 onClick={() => setHistoryCustomer(null)}
-                className="px-4 py-1.5 bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold"
+                className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition"
               >
                 Tutup
               </button>
@@ -892,17 +1124,314 @@ export const CustomersView: React.FC = () => {
         </div>
       )}
 
+      {/* 2.5. MODAL BATALKAN / TARIK SALDO DEPOSIT */}
+      {cancelCustomer && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto cursor-pointer"
+          onClick={() => setCancelCustomer(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 cursor-default my-auto max-h-[92vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2.5">
+                <span className="p-1.5 bg-rose-500/20 text-rose-400 rounded-xl border border-rose-500/30">
+                  <RotateCcw size={18} />
+                </span>
+                <div>
+                  <h3 className="font-bold text-sm">Batalkan / Tarik Saldo Deposit</h3>
+                  <p className="text-[11px] text-slate-300">
+                    {cancelCustomer.name} ({cancelCustomer.phone})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCancelCustomer(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleCancelDepositSubmit} className="p-4 space-y-3.5 text-xs overflow-y-auto max-h-[80vh]">
+              {/* Notice Banner */}
+              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 flex items-start gap-2">
+                <AlertCircle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-[11px] leading-relaxed">
+                  Fitur ini membatalkan atau mengembalikan saldo deposit pelanggan. Uang pengembalian akan otomatis dicatat sebagai <strong>Kas Keluar</strong> dalam buku kas operasional.
+                </p>
+              </div>
+
+              {/* If cancelling a specific top-up */}
+              {cancelTargetRecord && (
+                <div className="p-2.5 rounded-xl bg-rose-50/70 border border-rose-200 text-rose-950">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider flex items-center gap-1">
+                      <Tag size={11} /> Mutasi Top-Up Yang Dipilih
+                    </span>
+                    <span className="text-[10px] text-slate-500">{formatDate(cancelTargetRecord.timestamp)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-xs">Nominal Mutasi:</span>
+                    <span className="font-mono font-bold text-sm text-rose-700">
+                      +{formatRupiah(cancelTargetRecord.amount)}
+                    </span>
+                  </div>
+                  {cancelTargetRecord.paymentMethod && (
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Metode bayar saat top up: {cancelTargetRecord.paymentMethod}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Saldo Aktif Saat Ini */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center">
+                <div>
+                  <span className="text-[10px] text-slate-500 font-semibold block uppercase">Saldo Deposit Aktif Saat Ini</span>
+                  <span className="font-bold text-base text-emerald-800 font-mono">
+                    {formatRupiah(cancelCustomer.depositBalance || 0)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCancelAmount(cancelCustomer.depositBalance || 0)}
+                  className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-[11px] font-semibold transition"
+                >
+                  Tarik Semua
+                </button>
+              </div>
+
+              {/* Nominal Pembatalan Input */}
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="font-semibold text-slate-700">Nominal Pembatalan (Rp) *</label>
+                  {cancelCustomer.depositBalance && cancelCustomer.depositBalance > 0 && (
+                    <span className="text-[10px] text-slate-500">
+                      Maksimal: {formatRupiah(cancelCustomer.depositBalance)}
+                    </span>
+                  )}
+                </div>
+
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 font-bold text-slate-400">Rp</span>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    max={cancelCustomer.depositBalance || 0}
+                    placeholder="Contoh: 50000"
+                    value={cancelAmount}
+                    onChange={e => {
+                      setCancelError(null);
+                      setCancelAmount(Number(e.target.value) || '');
+                    }}
+                    className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-hidden font-mono font-bold text-sm"
+                  />
+                </div>
+
+                {/* Quick Chips */}
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {cancelTargetRecord && cancelTargetRecord.amount <= (cancelCustomer.depositBalance || 0) && (
+                    <button
+                      type="button"
+                      onClick={() => setCancelAmount(cancelTargetRecord.amount)}
+                      className={`px-2 py-1 rounded-lg border text-[11px] font-medium transition ${
+                        cancelAmount === cancelTargetRecord.amount
+                          ? 'bg-rose-600 text-white border-rose-600'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      Top-Up Ini ({formatRupiah(cancelTargetRecord.amount)})
+                    </button>
+                  )}
+                  {cancelCustomer.depositBalance && cancelCustomer.depositBalance > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setCancelAmount(cancelCustomer.depositBalance || 0)}
+                      className={`px-2 py-1 rounded-lg border text-[11px] font-medium transition ${
+                        cancelAmount === cancelCustomer.depositBalance
+                          ? 'bg-rose-600 text-white border-rose-600'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      Semua Saldo
+                    </button>
+                  )}
+                  {[10000, 20000, 50000, 100000]
+                    .filter(v => v <= (cancelCustomer.depositBalance || 0))
+                    .map(v => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setCancelAmount(v)}
+                        className={`px-2 py-1 rounded-lg border text-[11px] font-mono transition ${
+                          cancelAmount === v
+                            ? 'bg-rose-600 text-white border-rose-600'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        {formatRupiah(v)}
+                      </button>
+                    ))}
+                </div>
+
+                {/* Live validation feedback */}
+                {Number(cancelAmount) > (cancelCustomer.depositBalance || 0) && (
+                  <p className="text-red-600 font-semibold text-[11px] mt-1.5 flex items-center gap-1">
+                    <AlertCircle size={12} />
+                    Nominal melebihi saldo deposit pelanggan saat ini!
+                  </p>
+                )}
+
+                {Number(cancelAmount) > 0 && Number(cancelAmount) <= (cancelCustomer.depositBalance || 0) && (
+                  <div className="mt-2 p-2 bg-emerald-50 rounded-xl border border-emerald-200 flex justify-between items-center text-[11px]">
+                    <span className="text-emerald-800 font-medium">Sisa Saldo Setelah Pembatalan:</span>
+                    <span className="font-mono font-bold text-emerald-900">
+                      {formatRupiah(Math.max(0, (cancelCustomer.depositBalance || 0) - Number(cancelAmount)))}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Metode Pengembalian Dana */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1.5">Metode Pengembalian Uang (Kas Keluar) *</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['TUNAI', 'TRANSFER', 'QRIS'] as const).map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setCancelRefundMethod(m)}
+                      className={`py-2 px-2.5 rounded-xl border text-xs font-semibold transition flex flex-col items-center justify-center gap-1 ${
+                        cancelRefundMethod === m
+                          ? 'bg-rose-50 border-rose-500 text-rose-800 ring-2 ring-rose-400/20'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span>{m === 'TUNAI' ? '💵 Tunai' : m === 'TRANSFER' ? '🏦 Transfer' : '📱 QRIS'}</span>
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        {m === 'TUNAI' ? 'Kas Laci' : m === 'TRANSFER' ? 'Rek Bank' : 'Non-Tunai'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Alasan Pembatalan */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Alasan Pembatalan / Penarikan *</label>
+                <div className="grid grid-cols-2 gap-1.5 mb-2">
+                  {[
+                    'Salah Input Nominal Top-Up',
+                    'Pelanggan Ingin Tarik Sisa Saldo',
+                    'Salah Pilih Nama Pelanggan',
+                    'Pembatalan Pesanan / Transaksi',
+                  ].map(reasonOption => (
+                    <button
+                      key={reasonOption}
+                      type="button"
+                      onClick={() => setCancelReason(reasonOption)}
+                      className={`p-1.5 rounded-lg border text-[10px] text-left transition ${
+                        cancelReason === reasonOption
+                          ? 'bg-slate-800 text-white border-slate-800 font-semibold'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {reasonOption}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ketik alasan pembatalan..."
+                  value={cancelReason}
+                  onChange={e => setCancelReason(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-hidden text-xs"
+                />
+              </div>
+
+              {/* Catatan Tambahan (Opsional) */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Catatan Tambahan (Opsional)</label>
+                <input
+                  type="text"
+                  placeholder="Misal: Dikembalikan via transfer BCA, dll."
+                  value={cancelNotes}
+                  onChange={e => setCancelNotes(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-hidden text-xs"
+                />
+              </div>
+
+              {/* Checkbox Kirim WA */}
+              <label className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-100/70 transition">
+                <input
+                  type="checkbox"
+                  checked={sendWaAfterCancel}
+                  onChange={e => setSendWaAfterCancel(e.target.checked)}
+                  className="w-4 h-4 text-emerald-600 rounded-sm focus:ring-emerald-500"
+                />
+                <div className="flex-1">
+                  <span className="font-semibold text-slate-800 block text-[11px] flex items-center gap-1">
+                    <MessageCircle size={13} className="text-emerald-600" />
+                    Kirim Bukti Pembatalan ke WhatsApp Pelanggan
+                  </span>
+                  <span className="text-[10px] text-slate-500 block">
+                    Buka WhatsApp otomatis dengan rincian pengembalian dana & sisa saldo aktif.
+                  </span>
+                </div>
+              </label>
+
+              {/* Error Alert */}
+              {cancelError && (
+                <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 flex items-start gap-1.5">
+                  <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                  <span className="text-[11px] leading-tight">{cancelError}</span>
+                </div>
+              )}
+
+              {/* Buttons */}
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCancelCustomer(null)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold transition"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    !cancelAmount ||
+                    Number(cancelAmount) <= 0 ||
+                    Number(cancelAmount) > (cancelCustomer.depositBalance || 0)
+                  }
+                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-md shadow-rose-200 transition"
+                >
+                  <RotateCcw size={14} />
+                  <span>Batalkan Deposit</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* 3. Add / Edit Customer Modal */}
       {showModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 cursor-pointer"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto cursor-pointer"
           onClick={() => setShowModal(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 cursor-default"
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 cursor-default my-auto max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <h3 className="font-bold text-sm flex items-center gap-1.5">
                 <UserPlus size={16} className="text-blue-400" />
                 {editingId ? 'Edit Data Pelanggan / Reseller' : 'Tambah Pelanggan / Reseller Baru'}
@@ -1111,14 +1640,14 @@ export const CustomersView: React.FC = () => {
       {/* 4. WhatsApp Promo Modal */}
       {promoCustomer && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 cursor-pointer"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto cursor-pointer"
           onClick={() => setPromoCustomer(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 cursor-default"
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 cursor-default my-auto max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <div>
                 <h3 className="font-bold text-sm">Kirim Promosi WhatsApp</h3>
                 <p className="text-xs text-slate-400">Kepada: {promoCustomer.name} ({promoCustomer.phone})</p>
@@ -1128,7 +1657,7 @@ export const CustomersView: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-4 space-y-3 text-xs">
+            <div className="p-4 space-y-3 text-xs overflow-y-auto">
               <div className="flex items-center justify-between">
                 <label className="font-semibold text-slate-700">Teks Isi Pesan Promosi:</label>
                 <button
@@ -1181,10 +1710,10 @@ export const CustomersView: React.FC = () => {
             onClick={() => setSettlingCustomer(null)}
           >
             <div
-              className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 cursor-default my-auto"
+              className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 cursor-default my-auto max-h-[90vh] flex flex-col"
               onClick={e => e.stopPropagation()}
             >
-              <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+              <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
                     💳
@@ -1199,7 +1728,7 @@ export const CustomersView: React.FC = () => {
                 </button>
               </div>
 
-              <div className="p-4 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="p-4 space-y-4 overflow-y-auto flex-1">
                 <div className="bg-amber-50 p-3.5 rounded-2xl border border-amber-200 flex items-center justify-between">
                   <div>
                     <span className="text-[11px] text-slate-600 block">Sisa Total Kasbon Pelanggan:</span>

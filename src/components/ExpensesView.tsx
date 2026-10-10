@@ -261,16 +261,16 @@ export const ExpensesView: React.FC = () => {
 
       {/* Add Expense Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200">
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 my-auto max-h-[90vh] flex flex-col">
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <h3 className="font-bold text-sm">Catat Pengeluaran Baru</h3>
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-white">
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleFormSubmit} className="p-5 space-y-3.5 text-xs">
+            <form onSubmit={handleFormSubmit} className="p-5 space-y-3.5 text-xs overflow-y-auto pr-1">
               {/* Tanggal & Waktu Pengeluaran */}
               <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200 space-y-2">
                 <div className="flex items-center justify-between">

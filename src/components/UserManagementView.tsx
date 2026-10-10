@@ -358,9 +358,9 @@ export const UserManagementView: React.FC = () => {
 
       {/* Modal 1: Add New User */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 my-auto max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div className="flex items-center gap-2">
                 <span className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
                   <UserPlus size={18} />
@@ -376,13 +376,13 @@ export const UserManagementView: React.FC = () => {
             </div>
 
             {formError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2 shrink-0">
                 <AlertCircle size={15} />
                 <span>{formError}</span>
               </div>
             )}
 
-            <form onSubmit={handleSaveNewUser} className="space-y-3.5">
+            <form onSubmit={handleSaveNewUser} className="space-y-3.5 overflow-y-auto pr-1">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Nama Lengkap <span className="text-red-500">*</span>
@@ -494,9 +494,9 @@ export const UserManagementView: React.FC = () => {
 
       {/* Modal 2: Edit User */}
       {editingUser && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 my-auto max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div className="flex items-center gap-2">
                 <span className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
                   <Edit2 size={18} />
@@ -512,13 +512,13 @@ export const UserManagementView: React.FC = () => {
             </div>
 
             {formError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2 shrink-0">
                 <AlertCircle size={15} />
                 <span>{formError}</span>
               </div>
             )}
 
-            <form onSubmit={handleSaveEditUser} className="space-y-3.5">
+            <form onSubmit={handleSaveEditUser} className="space-y-3.5 overflow-y-auto pr-1">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Nama Lengkap

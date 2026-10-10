@@ -157,6 +157,31 @@ _Saldo deposit ini dapat digunakan sewaktu-waktu untuk pembayaran pesanan makana
 Terima kasih atas kepercayaannya! 🙏😊`;
 }
 
+export function generateCancelDepositReceiptWhatsAppText(
+  customer: Customer,
+  amount: number,
+  newBalance: number,
+  reason: string,
+  method: string,
+  store: StoreSettings
+): string {
+  const dateStr = formatDate(new Date().toISOString());
+  return `🧾 *BUKTI PEMBATALAN / PENARIKAN DEPOSIT - ${store.storeName.toUpperCase()}*
+${store.tagline ? `_${store.tagline}_\n` : ''}📞 Kontak: ${store.phone}
+----------------------------------------
+Tanggal        : ${dateStr}
+Pelanggan      : *${customer.name}* (${customer.phone})
+----------------------------------------
+Nominal Batal  : *- ${formatRupiah(amount)}*
+Metode Kembali : ${method}
+Alasan         : ${reason || 'Pembatalan deposit'}
+*SISA SALDO AKTIF : ${formatRupiah(newBalance)}*
+----------------------------------------
+_Uang deposit telah dibatalkan / dikembalikan sesuai bukti ini._
+
+Terima kasih atas kerja samanya. 🙏`;
+}
+
 export function generateBillWhatsAppText(
   customer: Customer, 
   unpaidTransactions: Transaction[], 

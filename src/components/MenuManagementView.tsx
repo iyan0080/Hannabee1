@@ -852,14 +852,14 @@ export const MenuManagementView: React.FC = () => {
       {/* QUICK ADD CATEGORY MODAL */}
       {showQuickAddCat && (
         <div
-          className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 cursor-pointer overflow-y-auto"
           onClick={() => setShowQuickAddCat(false)}
         >
           <div
-            className="bg-white rounded-2xl max-w-sm w-full shadow-2xl p-5 border border-slate-200 animate-in fade-in zoom-in duration-150 cursor-default"
+            className="bg-white rounded-2xl max-w-sm w-full shadow-2xl p-5 border border-slate-200 animate-in fade-in zoom-in duration-150 cursor-default my-auto max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
               <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
                 <span>🏷️</span>
                 <span>Tambah Kategori Baru</span>
@@ -873,7 +873,7 @@ export const MenuManagementView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateQuickCategory} className="space-y-3 mt-3">
+            <form onSubmit={handleCreateQuickCategory} className="space-y-3 mt-3 overflow-y-auto pr-1">
               {quickCatError && (
                 <p className="text-[11px] text-rose-600 font-medium bg-rose-50 p-2 rounded-lg">
                   {quickCatError}

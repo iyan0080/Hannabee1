@@ -1188,14 +1188,14 @@ export const POSView: React.FC = () => {
       {/* 1. Modal Variant Selector */}
       {variantModalProduct && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 cursor-pointer"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto cursor-pointer"
           onClick={() => setVariantModalProduct(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 cursor-default"
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 cursor-default my-auto max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <div>
                 <span className="text-xs text-emerald-400 font-semibold uppercase tracking-wide">
                   Pilih Varian & Tambahan
@@ -1211,7 +1211,7 @@ export const POSView: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto">
+            <div className="p-4 space-y-3 overflow-y-auto flex-1">
               <label className="block text-xs font-semibold text-slate-700">
                 Pilih Varian / Topping / Level:
               </label>
@@ -1352,14 +1352,14 @@ export const POSView: React.FC = () => {
       {/* 2. Quick Customer Modal */}
       {showAddCustomerModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 cursor-pointer"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto cursor-pointer"
           onClick={() => setShowAddCustomerModal(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-slate-200 cursor-default"
+            className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden border border-slate-200 cursor-default my-auto max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <h3 className="font-bold text-sm flex items-center gap-1.5">
                 <UserPlus size={16} className="text-blue-400" /> Tambah Data Pelanggan Baru
               </h3>
@@ -1370,7 +1370,7 @@ export const POSView: React.FC = () => {
                 <X size={18} />
               </button>
             </div>
-            <form onSubmit={handleSaveQuickCustomer} className="p-4 space-y-3">
+            <form onSubmit={handleSaveQuickCustomer} className="p-4 space-y-3 overflow-y-auto flex-1">
               {/* Customer Type Selector */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">

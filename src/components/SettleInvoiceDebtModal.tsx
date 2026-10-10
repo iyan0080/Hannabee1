@@ -13,6 +13,7 @@ import {
   ChevronUp,
   AlertCircle,
   Receipt,
+  Calendar,
 } from 'lucide-react';
 import { Transaction, PaymentRecord } from '../types';
 import { useWarung } from '../context/WarungContext';
@@ -47,6 +48,11 @@ export const SettleInvoiceDebtModal: React.FC<SettleInvoiceDebtModalProps> = ({
   // Form states
   const [payMode, setPayMode] = useState<'FULL' | 'PARTIAL'>('FULL');
   const [amountInput, setAmountInput] = useState<string>(currentRemaining.toString());
+  const [paymentDate, setPaymentDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [paymentTime, setPaymentTime] = useState<string>(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  });
   const [paymentMethod, setPaymentMethod] = useState<'TUNAI' | 'TRANSFER' | 'SALDO_DEPOSIT'>('TUNAI');
   const [notes, setNotes] = useState<string>('');
   const [sendWaReceipt, setSendWaReceipt] = useState<boolean>(true);
@@ -104,11 +110,20 @@ export const SettleInvoiceDebtModal: React.FC<SettleInvoiceDebtModalProps> = ({
       ? `Pelunasan Penuh Nota ${transaction.invoiceNumber}`
       : `Cicilan Pembayaran Nota ${transaction.invoiceNumber}`;
 
+    let finalTimestamp = new Date().toISOString();
+    if (paymentDate) {
+      const [year, month, day] = paymentDate.split('-').map(Number);
+      const [hours, minutes] = (paymentTime || '12:00').split(':').map(Number);
+      const targetDate = new Date(year, month - 1, day, hours || 0, minutes || 0, 0);
+      finalTimestamp = isNaN(targetDate.getTime()) ? new Date().toISOString() : targetDate.toISOString();
+    }
+
     const res = settleTransactionDebt(
       transaction.id,
       effectivePayAmount,
       defaultNotes,
-      paymentMethod
+      paymentMethod,
+      finalTimestamp
     );
 
     if (res.success) {
@@ -116,7 +131,7 @@ export const SettleInvoiceDebtModal: React.FC<SettleInvoiceDebtModalProps> = ({
       if (sendWaReceipt && transaction.customerPhone) {
         const dummyRecord: PaymentRecord = {
           id: 'pay-' + Date.now(),
-          date: new Date().toISOString(),
+          date: finalTimestamp,
           amount: effectivePayAmount,
           paymentMethod,
           notes: defaultNotes,
@@ -146,11 +161,11 @@ export const SettleInvoiceDebtModal: React.FC<SettleInvoiceDebtModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 my-auto animate-in fade-in zoom-in-95 duration-150"
+        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 my-auto max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-150"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-white p-4 sm:p-5 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center font-bold">
               <Receipt size={20} />
@@ -173,7 +188,7 @@ export const SettleInvoiceDebtModal: React.FC<SettleInvoiceDebtModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
           {/* Customer & Bill Overview Card */}
           <div className="bg-gradient-to-br from-amber-50/70 to-orange-50/40 p-3.5 rounded-2xl border border-amber-200/80 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between text-xs gap-1">
@@ -375,6 +390,63 @@ export const SettleInvoiceDebtModal: React.FC<SettleInvoiceDebtModalProps> = ({
                 ) : (
                   <span className="text-amber-900 font-bold">{formatRupiah(remainingAfter)}</span>
                 )}
+              </div>
+            </div>
+          </div>
+
+          {/* Tanggal & Waktu Pembayaran */}
+          <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                <span>Tanggal & Waktu Pembayaran *</span>
+              </label>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const todayStr = new Date().toISOString().slice(0, 10);
+                    setPaymentDate(todayStr);
+                  }}
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-md transition ${
+                    paymentDate === new Date().toISOString().slice(0, 10)
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Hari Ini
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const yesterday = new Date();
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    setPaymentDate(yesterday.toISOString().slice(0, 10));
+                  }}
+                  className="px-2 py-0.5 text-[10px] font-semibold rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 transition"
+                >
+                  Kemarin
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <input
+                  type="date"
+                  required
+                  value={paymentDate}
+                  onChange={e => setPaymentDate(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-semibold text-slate-800 rounded-xl border border-slate-200 bg-white focus:outline-hidden focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                />
+              </div>
+              <div>
+                <input
+                  type="time"
+                  value={paymentTime}
+                  onChange={e => setPaymentTime(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-semibold text-slate-800 rounded-xl border border-slate-200 bg-white focus:outline-hidden focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                />
               </div>
             </div>
           </div>

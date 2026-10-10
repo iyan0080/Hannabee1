@@ -62,16 +62,16 @@ export const ItemDiscountModal: React.FC<ItemDiscountModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn cursor-pointer"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn cursor-pointer overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-scaleUp cursor-default"
+        className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-scaleUp cursor-default my-auto max-h-[90vh]"
         onClick={e => e.stopPropagation()}
       >
         
         {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
+        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
               <Tag size={18} />
@@ -91,7 +91,7 @@ export const ItemDiscountModal: React.FC<ItemDiscountModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto">
           
           {/* Item details card */}
           <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3 flex items-center justify-between">

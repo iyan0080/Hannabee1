@@ -65,15 +65,23 @@ export type PaymentMethod = 'TUNAI' | 'QRIS' | 'TRANSFER' | 'KASBON' | 'SALDO_DE
 export type CustomerType = 'UMUM' | 'RESELLER';
 export type DiscountType = 'NOMINAL' | 'PERCENTAGE';
 
+export type DepositRecordType = 'TOPUP' | 'PAYMENT' | 'REFUND' | 'CANCEL_TOPUP' | 'USAGE' | 'TOP_UP';
+
 export interface DepositRecord {
   id: string;
   timestamp: string;
-  type: 'TOPUP' | 'PAYMENT' | 'REFUND';
+  type: DepositRecordType;
   amount: number;
-  paymentMethod?: 'TUNAI' | 'TRANSFER' | 'QRIS';
+  paymentMethod?: 'TUNAI' | 'TRANSFER' | 'QRIS' | 'SALDO_DEPOSIT';
   invoiceNumber?: string;
   notes?: string;
   remainingBalance: number;
+  balanceAfter?: number;
+  referenceDepositId?: string;
+  isCancelled?: boolean;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancelReason?: string;
 }
 
 export interface PaymentRecord {

@@ -1644,14 +1644,14 @@ export const BookkeepingView: React.FC = () => {
       {/* ========================================================================= */}
       {isEntryModalOpen && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto cursor-pointer"
           onClick={() => setIsEntryModalOpen(false)}
         >
           <div
-            className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150 cursor-default"
+            className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150 cursor-default my-auto max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div className="flex items-center gap-2">
                 <div
                   className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${
@@ -1669,7 +1669,7 @@ export const BookkeepingView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveManualEntry} className="space-y-4">
+            <form onSubmit={handleSaveManualEntry} className="space-y-4 overflow-y-auto pr-1">
               {/* Type Switcher */}
               <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
                 <button
@@ -1974,8 +1974,8 @@ export const BookkeepingView: React.FC = () => {
       {/* SUCCESS CASH CLOSING POPUP */}
       {/* ========================================================================= */}
       {closingSuccessDialog && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150 my-auto max-h-[90vh] overflow-y-auto">
             <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
               <CheckCircle2 className="w-6 h-6" />
             </div>
@@ -2036,14 +2036,14 @@ export const BookkeepingView: React.FC = () => {
       {/* ========================================================================= */}
       {isAutoJournalSettingsOpen && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto cursor-pointer"
           onClick={() => setIsAutoJournalSettingsOpen(false)}
         >
           <div
-            className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150 cursor-default"
+            className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150 cursor-default my-auto max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
                   <Zap className="w-4 h-4" />
@@ -2061,7 +2061,7 @@ export const BookkeepingView: React.FC = () => {
               </button>
             </div>
 
-            <div className="space-y-4 text-xs">
+            <div className="space-y-4 text-xs overflow-y-auto flex-1 pr-1">
               {/* Toggle Aktif */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
                 <div>
@@ -2143,9 +2143,9 @@ export const BookkeepingView: React.FC = () => {
       {/* POS TRANSACTION RECEIPT MODAL */}
       {/* ========================================================================= */}
       {selectedAutoJournalTrx && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-150 my-auto max-h-[90vh] flex flex-col">
+            <div className="flex items-center gap-2.5 justify-between border-b border-slate-100 pb-3 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
                   <Receipt className="w-4 h-4" />
@@ -2163,7 +2163,7 @@ export const BookkeepingView: React.FC = () => {
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-3 text-xs overflow-y-auto flex-1 pr-1">
               {/* Meta Info */}
               <div className="p-3 bg-slate-50 rounded-xl space-y-1.5 border border-slate-200">
                 <div className="flex justify-between text-slate-600">
@@ -2244,9 +2244,9 @@ export const BookkeepingView: React.FC = () => {
       {/* Modal Kelola Kategori Pembukuan Kas */}
       {isCategoryModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto max-h-[90vh] flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
                   <Tag className="w-5 h-5" />
@@ -2266,21 +2266,22 @@ export const BookkeepingView: React.FC = () => {
               </button>
             </div>
 
-            {/* Notification Feedback */}
-            {catFeedback && (
-              <div
-                className={`p-3 rounded-xl text-xs flex items-center justify-between ${
-                  catFeedback.type === 'success'
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                    : 'bg-rose-50 text-rose-800 border border-rose-200'
-                }`}
-              >
-                <span>{catFeedback.message}</span>
-                <button onClick={() => setCatFeedback(null)} className="text-slate-400 hover:text-slate-600 ml-2">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
+            <div className="space-y-4 overflow-y-auto flex-1 pr-1">
+              {/* Notification Feedback */}
+              {catFeedback && (
+                <div
+                  className={`p-3 rounded-xl text-xs flex items-center justify-between ${
+                    catFeedback.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200'
+                  }`}
+                >
+                  <span>{catFeedback.message}</span>
+                  <button onClick={() => setCatFeedback(null)} className="text-slate-400 hover:text-slate-600 ml-2">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
 
             {/* Form Tambah Kategori Baru */}
             <div className="bg-slate-50 p-3.5 sm:p-4 rounded-xl border border-slate-200 space-y-3">
@@ -2476,9 +2477,10 @@ export const BookkeepingView: React.FC = () => {
                   ))}
               </div>
             </div>
+            </div>
 
             {/* Footer */}
-            <div className="flex justify-end pt-2 border-t border-slate-100">
+            <div className="flex justify-end pt-2 border-t border-slate-100 shrink-0">
               <button
                 type="button"
                 onClick={() => setIsCategoryModalOpen(false)}

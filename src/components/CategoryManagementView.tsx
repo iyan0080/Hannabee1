@@ -415,9 +415,9 @@ export const CategoryManagementView: React.FC<CategoryManagementViewProps> = ({ 
 
       {/* MODAL: TAMBAH / EDIT KATEGORI */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-150">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-150 my-auto max-h-[90vh] flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
                   <Palette size={16} />
@@ -439,7 +439,7 @@ export const CategoryManagementView: React.FC<CategoryManagementViewProps> = ({ 
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-5 space-y-4">
+            <form onSubmit={handleSave} className="p-5 space-y-4 overflow-y-auto">
               {formError && (
                 <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
                   <AlertTriangle size={15} className="shrink-0 mt-0.5" />
@@ -584,9 +584,9 @@ export const CategoryManagementView: React.FC<CategoryManagementViewProps> = ({ 
 
       {/* MODAL: KONFIRMASI HAPUS KATEGORI */}
       {deletingCategory && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-150">
-            <div className="p-5 text-center">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-150 my-auto max-h-[90vh] flex flex-col">
+            <div className="p-5 text-center overflow-y-auto">
               <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
                 <AlertTriangle size={24} />
               </div>
@@ -662,9 +662,9 @@ export const CategoryManagementView: React.FC<CategoryManagementViewProps> = ({ 
 
       {/* MODAL: LIHAT PRODUK DALAM KATEGORI */}
       {viewingCategory && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-150 flex flex-col max-h-[85vh]">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-150 flex flex-col my-auto max-h-[85vh]">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
               <div className="flex items-center gap-2">
                 <span className="text-2xl">{viewingCategory.icon || '🏷️'}</span>
                 <div>

@@ -2540,14 +2540,14 @@ export const ShoppingListManager: React.FC = () => {
       {/* 6. Modal Tambah / Edit Catatan Belanja */}
       {showModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150 cursor-pointer"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150 cursor-pointer overflow-y-auto"
           onClick={() => setShowModal(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 cursor-default"
+            className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 cursor-default my-auto max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <h3 className="font-bold text-sm flex items-center gap-2">
                 <ClipboardList size={18} className="text-blue-400" />
                 <span>{editingItemId ? 'Edit Catatan Belanja' : 'Tambah Catatan Belanja Bahan Baku'}</span>
@@ -2560,7 +2560,7 @@ export const ShoppingListManager: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleFormSubmit} className="p-5 space-y-3.5 max-h-[80vh] overflow-y-auto">
+            <form onSubmit={handleFormSubmit} className="p-5 space-y-3.5 max-h-[80vh] overflow-y-auto flex-1">
               
               {/* Nama Bahan / Barang */}
               <div>
@@ -2887,14 +2887,14 @@ export const ShoppingListManager: React.FC = () => {
       {/* 7. Modal Catat ke Pengeluaran / Buku Kas Otomatis */}
       {expenseItem && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150 cursor-pointer"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150 cursor-pointer overflow-y-auto"
           onClick={() => setExpenseItem(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200 cursor-default"
+            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200 cursor-default my-auto max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="p-4 bg-emerald-800 text-white flex justify-between items-center">
+            <div className="p-4 bg-emerald-800 text-white flex justify-between items-center shrink-0">
               <h3 className="font-bold text-sm flex items-center gap-2">
                 <CreditCard size={18} />
                 <span>Bukukan ke Pengeluaran Kas</span>
@@ -2907,7 +2907,7 @@ export const ShoppingListManager: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 overflow-y-auto">
               <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-xs text-emerald-950">
                 <p className="font-bold text-sm">{expenseItem.name}</p>
                 <p className="text-emerald-700 mt-0.5">Jumlah: {expenseItem.quantity} {expenseItem.unit}</p>
@@ -2990,15 +2990,15 @@ export const ShoppingListManager: React.FC = () => {
       {/* 8. MODAL CEPAT INPUT HARGA REALISASI BELANJA BAHAN BAKU */}
       {showRealizeModal && realizeItem && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150 cursor-pointer"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150 cursor-pointer overflow-y-auto"
           onClick={() => { setShowRealizeModal(false); setRealizeItem(null); }}
         >
           <div
-            className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 cursor-default"
+            className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 cursor-default my-auto max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="p-4 bg-emerald-800 text-white flex justify-between items-center">
+            <div className="p-4 bg-emerald-800 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2.5">
                 <span className="w-8 h-8 rounded-xl bg-emerald-700/80 flex items-center justify-center">
                   <DollarSign size={18} className="text-emerald-200" />
@@ -3016,7 +3016,7 @@ export const ShoppingListManager: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveRealization} className="p-5 space-y-4">
+            <form onSubmit={handleSaveRealization} className="p-5 space-y-4 overflow-y-auto">
               {/* Item Card Details */}
               <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
                 <div className="flex items-start justify-between gap-2">
