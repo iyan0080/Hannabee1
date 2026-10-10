@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Receipt,
   Calendar,
+  RotateCcw,
 } from 'lucide-react';
 import { Transaction, PaymentRecord } from '../types';
 import { useWarung } from '../context/WarungContext';
@@ -22,6 +23,8 @@ import {
   formatDateWithTime,
   generateDebtPaymentReceiptWhatsAppText,
   openWhatsApp,
+  getTransactionRemainingDebt,
+  calculateCustomerTotalDebt,
 } from '../utils/format';
 
 interface SettleInvoiceDebtModalProps {
@@ -35,15 +38,32 @@ export const SettleInvoiceDebtModal: React.FC<SettleInvoiceDebtModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { settleTransactionDebt, customers, storeSettings, currentUser } = useWarung();
+  const {
+    settleTransactionDebt,
+    syncCustomerDebt,
+    transactions,
+    customers,
+    storeSettings,
+    currentUser,
+  } = useWarung();
 
   // Net bill & debt calculation
   const netBill = Math.max(0, transaction.finalAmount - (transaction.totalReturnedAmount || 0));
-  const alreadyPaid = (transaction.paymentHistory || []).reduce((s, p) => s + (p.amount || 0), 0);
-  const currentRemaining = Math.max(0, netBill - alreadyPaid);
+  const alreadyPaid = Math.max(
+    (transaction.paymentHistory || []).reduce((s, p) => s + (p.amount || 0), 0),
+    transaction.amountPaid || 0
+  );
+  const currentRemaining = getTransactionRemainingDebt(transaction);
 
   const customer = customers.find(c => c.id === transaction.customerId);
   const depositAvailable = customer?.depositBalance || 0;
+
+  // Discrepancy detection between customer profile totalDebt and real transactions remaining
+  const calculatedTotalCustomerDebt = customer
+    ? calculateCustomerTotalDebt(customer.id, transactions)
+    : 0;
+  const hasDiscrepancy =
+    customer && (customer.totalDebt || 0) !== calculatedTotalCustomerDebt;
 
   // Form states
   const [payMode, setPayMode] = useState<'FULL' | 'PARTIAL'>('FULL');
@@ -205,7 +225,7 @@ export const SettleInvoiceDebtModal: React.FC<SettleInvoiceDebtModalProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-amber-200/60 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-amber-200/60 text-center">
               <div className="bg-white/80 p-2 rounded-xl border border-amber-100">
                 <span className="block text-[10px] text-slate-500 font-medium">Total Nota</span>
                 <span className="font-mono font-bold text-xs text-slate-800">{formatRupiah(netBill)}</span>
@@ -215,10 +235,40 @@ export const SettleInvoiceDebtModal: React.FC<SettleInvoiceDebtModalProps> = ({
                 <span className="font-mono font-bold text-xs text-emerald-700">{formatRupiah(alreadyPaid)}</span>
               </div>
               <div className="bg-amber-500 text-white p-2 rounded-xl shadow-xs">
-                <span className="block text-[10px] text-amber-100 font-semibold">Sisa Tagihan</span>
+                <span className="block text-[10px] text-amber-100 font-semibold">Sisa Nota Ini</span>
                 <span className="font-mono font-bold text-xs sm:text-sm">{formatRupiah(currentRemaining)}</span>
               </div>
+              <div className="bg-white/80 p-2 rounded-xl border border-amber-200">
+                <span className="block text-[10px] text-amber-800 font-medium">Total Kasbon Profil</span>
+                <span className="font-mono font-bold text-xs text-amber-900">{formatRupiah(customer?.totalDebt || 0)}</span>
+              </div>
             </div>
+
+            {/* Discrepancy Alert & Sync Button */}
+            {hasDiscrepancy && customer && (
+              <div className="mt-2 p-2.5 rounded-xl bg-amber-100/90 border border-amber-300 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+                <div className="flex items-start gap-1.5 text-[11px]">
+                  <AlertCircle size={15} className="text-amber-700 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block text-amber-950">Selisih Kasbon Terdeteksi:</span>
+                    <span className="text-[10px] text-amber-800 leading-tight">
+                      Total kasbon profil ({formatRupiah(customer.totalDebt)}) berbeda dengan sisa di riwayat nota ({formatRupiah(calculatedTotalCustomerDebt)}).
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    syncCustomerDebt(customer.id);
+                  }}
+                  className="px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition shadow-2xs shrink-0"
+                  title="Klik untuk menyamakan total kasbon profil dengan riwayat transaksi"
+                >
+                  <RotateCcw size={11} />
+                  <span>Sinkronkan ({formatRupiah(calculatedTotalCustomerDebt)})</span>
+                </button>
+              </div>
+            )}
 
             {/* Collapsible Payment History */}
             {transaction.paymentHistory && transaction.paymentHistory.length > 0 && (

@@ -89,7 +89,11 @@ import {
   clearSalesAndCashFirestoreDocuments,
   pushFullDatabaseToFirestore,
 } from '../services/firestoreSync';
-import { formatRupiah } from '../utils/format';
+import {
+  formatRupiah,
+  getTransactionRemainingDebt,
+  calculateCustomerTotalDebt,
+} from '../utils/format';
 
 export const MASTER_RESET_PASSWORD = 'Hannaa1224@';
 
@@ -253,6 +257,8 @@ interface WarungContextType {
     paymentMethod?: 'TUNAI' | 'TRANSFER' | 'SALDO_DEPOSIT' | 'LAINNYA',
     paymentDate?: string
   ) => { success: boolean; message: string; remaining: number };
+  syncCustomerDebt: (customerId: string) => { success: boolean; recalculatedDebt: number };
+  syncAllCustomerDebts: () => { success: boolean; fixedCount: number };
   topUpCustomerDeposit: (customerId: string, amount: number, paymentMethod?: 'TUNAI' | 'TRANSFER' | 'QRIS', notes?: string) => void;
   cancelCustomerDeposit: (params: {
     customerId: string;
@@ -1455,9 +1461,8 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 });
               }
 
-              const newDebt = trx.status === 'BELUM_LUNAS' 
-                ? Math.max(0, c.totalDebt - netRefundAmount) 
-                : c.totalDebt;
+              const nextTrxList = transactions.map(t => (t.id === transactionId ? updatedTrx : t));
+              const newDebt = calculateCustomerTotalDebt(trx.customerId, nextTrxList);
 
               const newSpent = (trx.status === 'LUNAS' && trx.paymentMethod !== 'SALDO_DEPOSIT')
                 ? Math.max(0, c.totalSpent - netRefundAmount)
@@ -1659,9 +1664,8 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 });
               }
 
-              const newDebt = (returnData.refundMethod === 'POTONG_KASBON' || trx.status === 'BELUM_LUNAS')
-                ? Math.max(0, c.totalDebt - effectiveRefundAmount)
-                : c.totalDebt;
+              const nextTrxList = transactions.map(t => (t.id === transactionId ? updatedTrx : t));
+              const newDebt = calculateCustomerTotalDebt(trx.customerId, nextTrxList);
 
               const newSpent = (trx.status === 'LUNAS' && returnData.refundMethod !== 'SALDO_DEPOSIT')
                 ? Math.max(0, c.totalSpent - effectiveRefundAmount)
@@ -1946,21 +1950,16 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const newCustomerId = customerId;
       const amountDiff = finalAmount - existingTrx.finalAmount;
 
+      const nextTrxList = transactions.map(t => (t.id === transactionId ? updatedTrx : t));
+
       if (oldCustomerId && oldCustomerId === newCustomerId) {
         setCustomers(prevCustomers => {
           return prevCustomers.map(c => {
             if (c.id === newCustomerId) {
-              const oldWasKasbon = existingTrx.paymentMethod === 'KASBON' && existingTrx.status === 'BELUM_LUNAS';
-              const newIsKasbon = isKasbon;
-              let debtDiff = 0;
-              if (oldWasKasbon && newIsKasbon) debtDiff = amountDiff;
-              else if (!oldWasKasbon && newIsKasbon) debtDiff = finalAmount;
-              else if (oldWasKasbon && !newIsKasbon) debtDiff = -existingTrx.finalAmount;
-
               const updatedCust = {
                 ...c,
                 totalSpent: Math.max(0, c.totalSpent + amountDiff),
-                totalDebt: Math.max(0, c.totalDebt + debtDiff),
+                totalDebt: calculateCustomerTotalDebt(newCustomerId, nextTrxList),
               };
               saveCustomerToFirestore(updatedCust);
               return updatedCust;
@@ -1973,12 +1972,11 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           setCustomers(prevCustomers => {
             return prevCustomers.map(c => {
               if (c.id === oldCustomerId) {
-                const oldWasKasbon = existingTrx.paymentMethod === 'KASBON' && existingTrx.status === 'BELUM_LUNAS';
                 const updatedCust = {
                   ...c,
                   totalTransactions: Math.max(0, c.totalTransactions - 1),
                   totalSpent: Math.max(0, c.totalSpent - existingTrx.finalAmount),
-                  totalDebt: oldWasKasbon ? Math.max(0, c.totalDebt - existingTrx.finalAmount) : c.totalDebt,
+                  totalDebt: calculateCustomerTotalDebt(oldCustomerId, nextTrxList),
                 };
                 saveCustomerToFirestore(updatedCust);
                 return updatedCust;
@@ -1995,7 +1993,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                   ...c,
                   totalTransactions: c.totalTransactions + 1,
                   totalSpent: c.totalSpent + finalAmount,
-                  totalDebt: isKasbon ? c.totalDebt + finalAmount : c.totalDebt,
+                  totalDebt: calculateCustomerTotalDebt(newCustomerId, nextTrxList),
                 };
                 saveCustomerToFirestore(updatedCust);
                 return updatedCust;
@@ -2034,15 +2032,15 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
 
       if (existingTrx.customerId) {
+        const remainingTrxList = transactions.filter(t => t.id !== transactionId);
         setCustomers(prevCustomers => {
           return prevCustomers.map(c => {
             if (c.id === existingTrx.customerId) {
-              const wasKasbon = existingTrx.paymentMethod === 'KASBON' && existingTrx.status === 'BELUM_LUNAS';
               const updatedCust = {
                 ...c,
                 totalTransactions: Math.max(0, c.totalTransactions - 1),
                 totalSpent: Math.max(0, c.totalSpent - existingTrx.finalAmount),
-                totalDebt: wasKasbon ? Math.max(0, c.totalDebt - existingTrx.finalAmount) : c.totalDebt,
+                totalDebt: calculateCustomerTotalDebt(existingTrx.customerId!, remainingTrxList),
               };
               saveCustomerToFirestore(updatedCust);
               return updatedCust;
@@ -2426,55 +2424,76 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const settleCustomerDebt = useCallback((customerId: string, amount: number, notes?: string) => {
     if (amount <= 0) return;
 
+    let updatedTransactionsList: Transaction[] = [];
+
+    // Distribute settlement chronologically (oldest unpaid invoice first)
+    setTransactions(prev => {
+      let remainingToSettle = amount;
+
+      // Identify unpaid transaction IDs in chronological order (oldest first)
+      const unpaidChronological = [...prev]
+        .filter(t => t.customerId === customerId && getTransactionRemainingDebt(t) > 0)
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+      // Track how much to pay per transaction
+      const payMap = new Map<string, number>();
+      for (const trx of unpaidChronological) {
+        if (remainingToSettle <= 0) break;
+        const billRemaining = getTransactionRemainingDebt(trx);
+        if (billRemaining > 0) {
+          const payForThis = Math.min(remainingToSettle, billRemaining);
+          payMap.set(trx.id, payForThis);
+          remainingToSettle -= payForThis;
+        }
+      }
+
+      const next = prev.map(trx => {
+        const payForThis = payMap.get(trx.id);
+        if (payForThis && payForThis > 0) {
+          const billRemaining = getTransactionRemainingDebt(trx);
+          const newRemaining = Math.max(0, billRemaining - payForThis);
+          const isNowLunas = newRemaining === 0;
+          const updatedTrx: Transaction = {
+            ...trx,
+            status: isNowLunas ? 'LUNAS' : (trx.status === 'DIRETUR_SEBAGIAN' ? 'DIRETUR_SEBAGIAN' : 'BELUM_LUNAS'),
+            amountPaid: (trx.amountPaid || 0) + payForThis,
+            paymentHistory: [
+              ...(trx.paymentHistory || []),
+              {
+                id: 'pay-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+                date: new Date().toISOString(),
+                amount: payForThis,
+                paymentMethod: 'TUNAI',
+                notes: notes || `Pelunasan Kasbon Pelanggan (${isNowLunas ? 'Lunas' : 'Sebagian'})`,
+                remainingAmountAfter: newRemaining,
+                receivedBy: currentUser?.name || storeSettings.cashierName,
+              },
+            ],
+          };
+          saveTransactionToFirestore(updatedTrx);
+          return updatedTrx;
+        }
+        return trx;
+      });
+
+      updatedTransactionsList = next;
+      return next;
+    });
+
+    // Update customer debt matching exact recalculated debt from updated transactions
     setCustomers(prev =>
       prev.map(c => {
         if (c.id === customerId) {
-          const newDebt = Math.max(0, c.totalDebt - amount);
-          const updatedCust = { ...c, totalDebt: newDebt };
+          const targetTrxList = updatedTransactionsList.length > 0 ? updatedTransactionsList : transactions;
+          const recalculatedDebt = calculateCustomerTotalDebt(customerId, targetTrxList);
+          const updatedCust = { ...c, totalDebt: recalculatedDebt };
           saveCustomerToFirestore(updatedCust);
           return updatedCust;
         }
         return c;
       })
     );
-
-    // Also distribute settlement to unpaid transactions of this customer
-    setTransactions(prev => {
-      let remainingToSettle = amount;
-      return prev.map(trx => {
-        if (trx.customerId === customerId && trx.status === 'BELUM_LUNAS' && remainingToSettle > 0) {
-          const netBill = Math.max(0, trx.finalAmount - (trx.totalReturnedAmount || 0));
-          const alreadyPaid = (trx.paymentHistory || []).reduce((s, p) => s + p.amount, 0);
-          const billRemaining = Math.max(0, netBill - alreadyPaid);
-          if (billRemaining > 0) {
-            const payForThis = Math.min(remainingToSettle, billRemaining);
-            remainingToSettle -= payForThis;
-            const newRemaining = Math.max(0, billRemaining - payForThis);
-            const updatedTrx: Transaction = {
-              ...trx,
-              status: newRemaining === 0 ? 'LUNAS' : 'BELUM_LUNAS',
-              amountPaid: (trx.amountPaid || 0) + payForThis,
-              paymentHistory: [
-                ...(trx.paymentHistory || []),
-                {
-                  id: 'pay-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-                  date: new Date().toISOString(),
-                  amount: payForThis,
-                  paymentMethod: 'TUNAI',
-                  notes: notes || `Pelunasan Kasbon Pelanggan (${newRemaining === 0 ? 'Lunas' : 'Sebagian'})`,
-                  remainingAmountAfter: newRemaining,
-                  receivedBy: currentUser?.name || storeSettings.cashierName,
-                },
-              ],
-            };
-            saveTransactionToFirestore(updatedTrx);
-            return updatedTrx;
-          }
-        }
-        return trx;
-      });
-    });
-  }, [currentUser, storeSettings]);
+  }, [currentUser, storeSettings, transactions]);
 
   const settleTransactionDebt = useCallback((
     transactionId: string,
@@ -2485,98 +2504,142 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   ) => {
     let result = { success: false, message: 'Transaksi tidak ditemukan', remaining: 0 };
 
-    setTransactions(prev => {
-      const trxIndex = prev.findIndex(t => t.id === transactionId);
-      if (trxIndex === -1) return prev;
+    const targetTrx = transactions.find(t => t.id === transactionId);
+    if (!targetTrx) return result;
 
-      const targetTrx = prev[trxIndex];
-      const netBill = Math.max(0, targetTrx.finalAmount - (targetTrx.totalReturnedAmount || 0));
-      const alreadyPaid = (targetTrx.paymentHistory || []).reduce((s, p) => s + p.amount, 0);
-      const currentRemaining = Math.max(0, netBill - alreadyPaid);
+    const currentRemaining = getTransactionRemainingDebt(targetTrx);
 
-      if (currentRemaining <= 0) {
-        result = { success: false, message: 'Nota tagihan ini sudah lunas sebelumnya.', remaining: 0 };
-        return prev;
-      }
+    if (currentRemaining <= 0) {
+      return { success: false, message: 'Nota tagihan ini sudah lunas sebelumnya.', remaining: 0 };
+    }
 
-      if (amount <= 0) {
-        result = { success: false, message: 'Nominal pembayaran harus lebih dari 0.', remaining: currentRemaining };
-        return prev;
-      }
+    if (amount <= 0) {
+      return { success: false, message: 'Nominal pembayaran harus lebih dari 0.', remaining: currentRemaining };
+    }
 
-      const payAmount = Math.min(amount, currentRemaining);
-      const newRemaining = Math.max(0, currentRemaining - payAmount);
-      const isNowFullyPaid = newRemaining === 0;
-      const finalPaymentDate = paymentDate || new Date().toISOString();
+    const payAmount = Math.min(amount, currentRemaining);
+    const newRemaining = Math.max(0, currentRemaining - payAmount);
+    const isNowFullyPaid = newRemaining === 0;
+    const finalPaymentDate = paymentDate || new Date().toISOString();
 
-      // Handle customer updates (deposit and totalDebt)
-      if (targetTrx.customerId) {
-        setCustomers(cPrev =>
-          cPrev.map(c => {
-            if (c.id === targetTrx.customerId) {
-              let updatedDeposit = c.depositBalance || 0;
-              const depositHistory = c.depositHistory ? [...c.depositHistory] : [];
+    const newPayment: PaymentRecord = {
+      id: 'pay-' + Date.now(),
+      date: finalPaymentDate,
+      amount: payAmount,
+      paymentMethod,
+      notes: notes || `Pembayaran Nota ${targetTrx.invoiceNumber} (${isNowFullyPaid ? 'Lunas' : 'Sebagian/Cicilan'})`,
+      remainingAmountAfter: newRemaining,
+      receivedBy: currentUser?.name || storeSettings.cashierName,
+    };
 
-              if (paymentMethod === 'SALDO_DEPOSIT') {
-                updatedDeposit = Math.max(0, updatedDeposit - payAmount);
-                depositHistory.unshift({
-                  id: 'dep-' + Date.now(),
-                  timestamp: finalPaymentDate,
-                  type: 'USAGE',
-                  amount: payAmount,
-                  notes: `Bayar Kasbon Nota ${targetTrx.invoiceNumber}`,
-                  remainingBalance: updatedDeposit,
-                });
-              }
+    const updatedTrx: Transaction = {
+      ...targetTrx,
+      status: isNowFullyPaid ? 'LUNAS' : (targetTrx.status === 'DIRETUR_SEBAGIAN' ? 'DIRETUR_SEBAGIAN' : 'BELUM_LUNAS'),
+      amountPaid: (targetTrx.amountPaid || 0) + payAmount,
+      paymentHistory: [...(targetTrx.paymentHistory || []), newPayment],
+    };
 
-              const updatedCust: Customer = {
-                ...c,
-                totalDebt: Math.max(0, c.totalDebt - payAmount),
-                depositBalance: updatedDeposit,
-                depositHistory: depositHistory,
-              };
-              saveCustomerToFirestore(updatedCust);
-              return updatedCust;
+    // 1. Update Transaction state & Firestore
+    const nextTransactions = transactions.map(t => (t.id === transactionId ? updatedTrx : t));
+    setTransactions(nextTransactions);
+    saveTransactionToFirestore(updatedTrx);
+
+    // 2. Update Customer state & Firestore with exact recalculated debt across all transactions
+    if (targetTrx.customerId) {
+      const custId = targetTrx.customerId;
+      const recalculatedDebt = calculateCustomerTotalDebt(custId, nextTransactions);
+
+      setCustomers(cPrev =>
+        cPrev.map(c => {
+          if (c.id === custId) {
+            let updatedDeposit = c.depositBalance || 0;
+            const depositHistory = c.depositHistory ? [...c.depositHistory] : [];
+
+            if (paymentMethod === 'SALDO_DEPOSIT') {
+              updatedDeposit = Math.max(0, updatedDeposit - payAmount);
+              depositHistory.unshift({
+                id: 'dep-' + Date.now(),
+                timestamp: finalPaymentDate,
+                type: 'USAGE',
+                amount: payAmount,
+                notes: `Bayar Kasbon Nota ${targetTrx.invoiceNumber}`,
+                remainingBalance: updatedDeposit,
+              });
             }
-            return c;
-          })
-        );
-      }
 
-      const newPayment: PaymentRecord = {
-        id: 'pay-' + Date.now(),
-        date: finalPaymentDate,
-        amount: payAmount,
-        paymentMethod,
-        notes: notes || `Pembayaran Nota ${targetTrx.invoiceNumber} (${isNowFullyPaid ? 'Lunas' : 'Sebagian/Cicilan'})`,
-        remainingAmountAfter: newRemaining,
-        receivedBy: currentUser?.name || storeSettings.cashierName,
-      };
+            const updatedCust: Customer = {
+              ...c,
+              totalDebt: recalculatedDebt,
+              depositBalance: updatedDeposit,
+              depositHistory: depositHistory,
+            };
+            saveCustomerToFirestore(updatedCust);
+            return updatedCust;
+          }
+          return c;
+        })
+      );
+    }
 
-      const updatedTrx: Transaction = {
-        ...targetTrx,
-        status: isNowFullyPaid ? 'LUNAS' : 'BELUM_LUNAS',
-        amountPaid: (targetTrx.amountPaid || 0) + payAmount,
-        paymentHistory: [...(targetTrx.paymentHistory || []), newPayment],
-      };
-
-      saveTransactionToFirestore(updatedTrx);
-
-      result = {
-        success: true,
-        message: isNowFullyPaid
-          ? `Pembayaran Rp ${payAmount.toLocaleString('id-ID')} berhasil. Nota ${targetTrx.invoiceNumber} LUNAS!`
-          : `Pembayaran Rp ${payAmount.toLocaleString('id-ID')} berhasil dicatat. Sisa tagihan nota: Rp ${newRemaining.toLocaleString('id-ID')}.`,
-        remaining: newRemaining,
-      };
-
-      const next = [...prev];
-      next[trxIndex] = updatedTrx;
-      return next;
-    });
+    result = {
+      success: true,
+      message: isNowFullyPaid
+        ? `Pembayaran Rp ${payAmount.toLocaleString('id-ID')} berhasil. Nota ${targetTrx.invoiceNumber} LUNAS!`
+        : `Pembayaran Rp ${payAmount.toLocaleString('id-ID')} berhasil dicatat. Sisa tagihan nota: Rp ${newRemaining.toLocaleString('id-ID')}.`,
+      remaining: newRemaining,
+    };
 
     return result;
-  }, [currentUser, storeSettings]);
+  }, [transactions, currentUser, storeSettings]);
+
+  // Recalculate & sync a specific customer's total debt from non-cancelled transactions
+  const syncCustomerDebt = useCallback((customerId: string) => {
+    const calculatedDebt = calculateCustomerTotalDebt(customerId, transactions);
+
+    setCustomers(prev =>
+      prev.map(c => {
+        if (c.id === customerId) {
+          const updatedCust = { ...c, totalDebt: calculatedDebt };
+          saveCustomerToFirestore(updatedCust);
+          return updatedCust;
+        }
+        return c;
+      })
+    );
+
+    return { success: true, recalculatedDebt: calculatedDebt };
+  }, [transactions]);
+
+  // Recalculate & sync all customers' total debt from non-cancelled transactions
+  const syncAllCustomerDebts = useCallback(() => {
+    let fixedCount = 0;
+    setCustomers(prev =>
+      prev.map(c => {
+        const calculatedDebt = calculateCustomerTotalDebt(c.id, transactions);
+
+        if ((c.totalDebt || 0) !== calculatedDebt) {
+          fixedCount++;
+          const updatedCust = { ...c, totalDebt: calculatedDebt };
+          saveCustomerToFirestore(updatedCust);
+          return updatedCust;
+        }
+        return c;
+      })
+    );
+
+    return { success: true, fixedCount };
+  }, [transactions]);
+
+  // Auto-reconciliation: ensure customer totalDebt always matches real calculated debt from transactions
+  useEffect(() => {
+    if (customers.length === 0 || transactions.length === 0) return;
+    const hasDiscrepancy = customers.some(
+      c => (c.totalDebt || 0) !== calculateCustomerTotalDebt(c.id, transactions)
+    );
+    if (hasDiscrepancy) {
+      syncAllCustomerDebts();
+    }
+  }, [customers, transactions, syncAllCustomerDebts]);
 
   // Shopping Items CRUD
   const addShoppingItem = useCallback((itemData: Omit<ShoppingItem, 'id' | 'createdAt'>): ShoppingItem => {
@@ -3895,6 +3958,8 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         deleteCustomer,
         settleCustomerDebt,
         settleTransactionDebt,
+        syncCustomerDebt,
+        syncAllCustomerDebts,
         topUpCustomerDeposit,
         cancelCustomerDeposit,
         updateStoreSettings,

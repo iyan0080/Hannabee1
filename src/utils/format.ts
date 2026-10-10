@@ -182,6 +182,26 @@ _Uang deposit telah dibatalkan / dikembalikan sesuai bukti ini._
 Terima kasih atas kerja samanya. 🙏`;
 }
 
+// Helper hitung sisa kasbon riil per nota transaksi
+export function getTransactionRemainingDebt(t: Transaction): number {
+  if (!t || t.status === 'BATAL' || t.status === 'LUNAS') return 0;
+  const isDebt = t.paymentMethod === 'KASBON' || t.status === 'BELUM_LUNAS';
+  if (!isDebt) return 0;
+
+  const netBill = Math.max(0, (t.finalAmount || 0) - (t.totalReturnedAmount || 0));
+  const paidHistory = (t.paymentHistory || []).reduce((s, p) => s + (p.amount || 0), 0);
+  const effectivePaid = Math.max(paidHistory, t.amountPaid || 0);
+  return Math.max(0, netBill - effectivePaid);
+}
+
+// Helper hitung akumulasi total kasbon riil pelanggan dari seluruh riwayat transaksi non-batal
+export function calculateCustomerTotalDebt(customerId: string, transactionsList: Transaction[]): number {
+  if (!customerId || !transactionsList || transactionsList.length === 0) return 0;
+  return transactionsList
+    .filter(t => t.customerId === customerId)
+    .reduce((sum, t) => sum + getTransactionRemainingDebt(t), 0);
+}
+
 export function generateBillWhatsAppText(
   customer: Customer, 
   unpaidTransactions: Transaction[], 
@@ -191,9 +211,20 @@ export function generateBillWhatsAppText(
   let totalDue = 0;
 
   unpaidTransactions.forEach((trx, i) => {
-    totalDue += trx.finalAmount;
-    billsList += `${i + 1}. Nota *${trx.invoiceNumber}* (${formatDateOnly(trx.timestamp)})\n   Nominal: *${formatRupiah(trx.finalAmount)}*\n`;
+    const remaining = getTransactionRemainingDebt(trx);
+    if (remaining > 0) {
+      totalDue += remaining;
+      const netBill = Math.max(0, trx.finalAmount - (trx.totalReturnedAmount || 0));
+      const paid = Math.max(
+        (trx.paymentHistory || []).reduce((s, p) => s + (p.amount || 0), 0),
+        trx.amountPaid || 0
+      );
+      const cicilInfo = paid > 0 ? ` (Total: ${formatRupiah(netBill)}, Sudah Dicicil: ${formatRupiah(paid)})` : '';
+      billsList += `${i + 1}. Nota *${trx.invoiceNumber}* (${formatDateOnly(trx.timestamp)})\n   Sisa Tagihan: *${formatRupiah(remaining)}*${cicilInfo}\n`;
+    }
   });
+
+  const finalDue = totalDue > 0 ? totalDue : (customer.totalDebt || 0);
 
   const text = `🙏 *PENGINGAT NOTA TAGIHAN / KASBON*
 *${store.storeName}*
@@ -205,7 +236,7 @@ Berikut kami sampaikan rincian tagihan kasbon/bon belanja Anda di *${store.store
 
 ${billsList || `Total Kasbon Tercatat: *${formatRupiah(customer.totalDebt)}*\n`}
 ----------------------------------------
-*TOTAL YANG HARUS DIBAYAR: ${formatRupiah(customer.totalDebt || totalDue)}*
+*TOTAL YANG HARUS DIBAYAR: ${formatRupiah(finalDue)}*
 ----------------------------------------
 💳 Pembayaran dapat dilakukan via:
 - Tunai langsung di warung

@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
 import { useRegisterModal } from '../context/ModalContext';
 import { Transaction, StoreSettings } from '../types';
-import { formatRupiah, formatDate, generateReceiptWhatsAppText, openWhatsApp, cleanPhoneNumber } from '../utils/format';
+import {
+  formatRupiah,
+  formatDate,
+  generateReceiptWhatsAppText,
+  openWhatsApp,
+  cleanPhoneNumber,
+  getTransactionRemainingDebt,
+} from '../utils/format';
 import { HannaBeeLogo } from './HannaBeeLogo';
 import { Printer, MessageCircle, X, Check, Copy, Share2 } from 'lucide-react';
 
@@ -303,6 +310,32 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   </div>
                 </>
               )}
+              {transaction.paymentMethod === 'KASBON' && (() => {
+                const netBill = Math.max(0, transaction.finalAmount - (transaction.totalReturnedAmount || 0));
+                const paid = Math.max(
+                  (transaction.paymentHistory || []).reduce((s, p) => s + (p.amount || 0), 0),
+                  transaction.amountPaid || 0
+                );
+                const remaining = getTransactionRemainingDebt(transaction);
+                const isFullyPaid = remaining === 0;
+
+                return (
+                  <>
+                    {paid > 0 && (
+                      <div className="flex justify-between text-emerald-800">
+                        <span>Sudah Dibayar (Cicilan):</span>
+                        <span className="font-bold font-mono">{formatRupiah(paid)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-rose-800 pt-0.5 border-t border-dotted border-slate-300">
+                      <span className="font-bold">Sisa Kasbon Nota Ini:</span>
+                      <span className="font-bold font-mono">
+                        {isFullyPaid ? 'Rp 0 (LUNAS)' : formatRupiah(remaining)}
+                      </span>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Footer */}

@@ -12,6 +12,8 @@ import {
   generateTopUpReceiptWhatsAppText,
   generateCancelDepositReceiptWhatsAppText,
   openWhatsApp,
+  getTransactionRemainingDebt,
+  calculateCustomerTotalDebt,
 } from '../utils/format';
 import { exportCustomersToExcel } from '../utils/exportData';
 import { pickContactFromPhone, isContactPickerSupported } from '../utils/contactPicker';
@@ -53,6 +55,9 @@ export const CustomersView: React.FC = () => {
     updateCustomer,
     deleteCustomer,
     settleCustomerDebt,
+    settleTransactionDebt,
+    syncCustomerDebt,
+    syncAllCustomerDebts,
     topUpCustomerDeposit,
     cancelCustomerDeposit,
     storeSettings,
@@ -129,6 +134,24 @@ export const CustomersView: React.FC = () => {
   const [cancelNotes, setCancelNotes] = useState('');
   const [sendWaAfterCancel, setSendWaAfterCancel] = useState(true);
   const [cancelError, setCancelError] = useState<string | null>(null);
+
+  // Sync notice state
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+
+  // Calculate actual debt from transactions
+  const getCustomerCalculatedDebt = (customerId: string) => {
+    return calculateCustomerTotalDebt(customerId, transactions);
+  };
+
+  const handleSyncAllDebts = () => {
+    const res = syncAllCustomerDebts();
+    if (res.fixedCount > 0) {
+      setSyncNotice(`Berhasil menyinkronkan data kasbon! ${res.fixedCount} data pelanggan disesuaikan agar cocok 100% dengan riwayat nota transaksi.`);
+    } else {
+      setSyncNotice('Semua saldo kasbon pelanggan sudah cocok 100% dengan riwayat nota transaksi.');
+    }
+    setTimeout(() => setSyncNotice(null), 5000);
+  };
 
   // Register all modals to back button and escape navigation
   useRegisterModal(showModal, () => setShowModal(false), 'cust-add-edit-modal');
@@ -417,6 +440,15 @@ export const CustomersView: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={handleSyncAllDebts}
+            className="px-3.5 py-2 bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
+            title="Sinkronkan saldo kasbon seluruh pelanggan dengan riwayat transaksi nyata"
+          >
+            <RotateCcw size={14} className="text-amber-700" />
+            <span>Sinkronkan Kasbon</span>
+          </button>
+
+          <button
             id="export-customers-excel-btn"
             onClick={() => exportCustomersToExcel(filteredCustomers, storeSettings)}
             className="px-3.5 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
@@ -435,6 +467,19 @@ export const CustomersView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Sync Notice Toast Banner */}
+      {syncNotice && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs flex items-center justify-between gap-2 shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+            <span className="font-medium">{syncNotice}</span>
+          </div>
+          <button onClick={() => setSyncNotice(null)} className="text-emerald-600 hover:text-emerald-900 p-1">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Filter & Search Bar */}
       <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
@@ -565,11 +610,34 @@ export const CustomersView: React.FC = () => {
                   </div>
 
                   <div className="flex flex-col items-end gap-1">
-                    {hasDebt && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800 border border-red-200">
-                        Bon: {formatRupiah(customer.totalDebt)}
-                      </span>
-                    )}
+                    {(() => {
+                      const calculatedDebt = getCustomerCalculatedDebt(customer.id);
+                      const hasDiscrepancy = calculatedDebt !== (customer.totalDebt || 0);
+
+                      return (
+                        <div className="flex flex-col items-end gap-1">
+                          {hasDebt && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800 border border-red-200">
+                              Bon: {formatRupiah(customer.totalDebt)}
+                            </span>
+                          )}
+                          {hasDiscrepancy && (
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation();
+                                syncCustomerDebt(customer.id);
+                              }}
+                              className="px-1.5 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded text-[9px] font-semibold flex items-center gap-1 transition shadow-2xs"
+                              title={`Riwayat nota menunjukkan sisa Rp ${formatRupiah(calculatedDebt)}. Klik untuk sinkronkan.`}
+                            >
+                              <RotateCcw size={9} />
+                              <span>Sinkronkan ({formatRupiah(calculatedDebt)})</span>
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -1701,8 +1769,11 @@ export const CustomersView: React.FC = () => {
       {/* 5. Settle Debt Modal (Pilihan Per Nota Tagihan atau Kasbon Bebas) */}
       {settlingCustomer && (() => {
         const customerUnpaidTrx = transactions.filter(
-          t => t.customerId === settlingCustomer.id && t.status === 'BELUM_LUNAS'
+          t => t.customerId === settlingCustomer.id && getTransactionRemainingDebt(t) > 0
         );
+
+        const sumUnpaidRemaining = calculateCustomerTotalDebt(settlingCustomer.id, transactions);
+        const hasDiscrepancy = (settlingCustomer.totalDebt || 0) !== sumUnpaidRemaining;
 
         return (
           <div
@@ -1741,6 +1812,33 @@ export const CustomersView: React.FC = () => {
                   </span>
                 </div>
 
+                {/* Discrepancy Alert & One-Click Sync */}
+                {hasDiscrepancy && (
+                  <div className="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 flex items-center justify-between gap-2 shadow-2xs">
+                    <div className="flex items-start gap-2 text-xs">
+                      <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-amber-950 text-xs">Penyesuaian Riwayat Kasbon:</p>
+                        <p className="text-[11px] text-amber-800 leading-relaxed">
+                          Total kasbon profil ({formatRupiah(settlingCustomer.totalDebt)}) berbeda dengan sisa di riwayat nota ({formatRupiah(sumUnpaidRemaining)}).
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        syncCustomerDebt(settlingCustomer.id);
+                        setSettleAmount(sumUnpaidRemaining);
+                      }}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shrink-0 transition flex items-center gap-1 shadow-xs"
+                      title="Klik untuk menyamakan total kasbon pelanggan dengan sisa riwayat transaksi"
+                    >
+                      <RotateCcw size={12} />
+                      <span>Sinkronkan ({formatRupiah(sumUnpaidRemaining)})</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* Section 1: Bayar Per Nota Tagihan (Sebagian atau Seluruhnya) */}
                 {customerUnpaidTrx.length > 0 && (
                   <div className="space-y-2">
@@ -1755,8 +1853,8 @@ export const CustomersView: React.FC = () => {
                     <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                       {customerUnpaidTrx.map(trx => {
                         const netBill = Math.max(0, trx.finalAmount - (trx.totalReturnedAmount || 0));
-                        const alreadyPaid = (trx.paymentHistory || []).reduce((s, p) => s + (p.amount || 0), 0);
-                        const billRemaining = Math.max(0, netBill - alreadyPaid);
+                        const alreadyPaid = Math.max((trx.paymentHistory || []).reduce((s, p) => s + (p.amount || 0), 0), trx.amountPaid || 0);
+                        const billRemaining = getTransactionRemainingDebt(trx);
                         const isPartial = alreadyPaid > 0 && billRemaining > 0;
 
                         return (
