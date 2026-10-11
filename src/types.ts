@@ -350,6 +350,8 @@ export interface CashClosingRecord {
   difference: number; // actual - expected (0 = cocok, >0 = lebih, <0 = kurang)
   denominations: CashDenomination;
   totalSalesCash: number;
+  totalDebtSettlementsCash?: number;
+  totalDepositTopUpsCash?: number;
   totalExpensesCash: number;
   totalManualInCash: number;
   totalManualOutCash: number;

@@ -3013,12 +3013,19 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         } else if (t.paymentMethod === 'SALDO_DEPOSIT') {
           account = 'SALDO_DEPOSIT';
           accountLabel = 'Saldo Deposit';
-        } else if (t.paymentMethod === 'KASBON') {
-          // Kasbon piutang: if partial payment was given upfront, record it
-          if (t.amountPaid <= 0) return;
         }
 
-        const rawAmount = t.paymentMethod === 'KASBON' ? t.amountPaid : t.finalAmount;
+        let rawAmount = t.finalAmount;
+        if (t.paymentMethod === 'KASBON') {
+          // Kasbon piutang: HANYA uang muka / DP yang dibayarkan saat checkout (jika ada) yang masuk kas penjualan kasir.
+          // Pembayaran pelunasan kasbon setelahnya dicatat tersendiri dari paymentHistory sebagai 'Pelunasan Kasbon' (DEBT_SETTLEMENT),
+          // sehingga tidak menggabungkan atau melipatgandakan penerimaan penjualan kasir.
+          const debtSettlementsTotal = (t.paymentHistory || []).reduce((sum, p) => sum + (p.amount || 0), 0);
+          const upfrontPayment = Math.max(0, (t.amountPaid || 0) - debtSettlementsTotal);
+          if (upfrontPayment <= 0) return; // Tidak ada uang tunai yang masuk ke kasir saat checkout kasbon
+          rawAmount = upfrontPayment;
+        }
+
         const netTotalInvoice = t.status === 'DIRETUR_SEBAGIAN' 
           ? Math.max(0, rawAmount - (t.totalReturnedAmount || 0)) 
           : rawAmount;
@@ -3149,6 +3156,19 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     transactions.forEach(t => {
       if (t.paymentHistory && t.paymentHistory.length > 0) {
         t.paymentHistory.forEach(p => {
+          let payAccount: CashAccountType = 'KAS_TUNAI';
+          let payAccountLabel = 'Kas Tunai (Laci)';
+          if (p.paymentMethod === 'QRIS') {
+            payAccount = 'QRIS';
+            payAccountLabel = 'QRIS';
+          } else if (p.paymentMethod === 'TRANSFER') {
+            payAccount = 'BANK_TRANSFER';
+            payAccountLabel = 'Rekening Bank';
+          } else if (p.paymentMethod === 'SALDO_DEPOSIT') {
+            payAccount = 'SALDO_DEPOSIT';
+            payAccountLabel = 'Saldo Deposit';
+          }
+
           rawItems.push({
             id: `pay-${p.id}`,
             timestamp: p.date,
@@ -3157,8 +3177,8 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             category: 'Pelunasan Kasbon',
             title: `Auto-Jurnal: Pelunasan Kasbon Nota ${t.invoiceNumber} - ${t.customerName || 'Pelanggan'}`,
             amount: p.amount,
-            account: 'KAS_TUNAI',
-            accountLabel: 'Kas Tunai (Laci)',
+            account: payAccount,
+            accountLabel: payAccountLabel,
             referenceType: 'DEBT_SETTLEMENT',
             referenceId: t.id,
             sourceType: 'POS_DEBT_SETTLEMENT',
@@ -3166,7 +3186,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             invoiceNumber: t.invoiceNumber,
             customerName: t.customerName,
             notes: p.notes || `Pelunasan piutang/kasbon untuk ${t.customerName || 'Pelanggan'}`,
-            actorName: 'Kasir',
+            actorName: p.receivedBy || 'Kasir',
           });
         });
       }

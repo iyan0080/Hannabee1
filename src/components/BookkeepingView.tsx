@@ -322,6 +322,8 @@ export const BookkeepingView: React.FC = () => {
     const todayEntries = getAllJournalEntries(start, end, 'KAS_TUNAI');
 
     let salesCash = 0;
+    let debtSettlementsCash = 0;
+    let depositTopUpsCash = 0;
     let expensesCash = 0;
     let manualInCash = 0;
     let manualOutCash = 0;
@@ -330,7 +332,11 @@ export const BookkeepingView: React.FC = () => {
     todayEntries.forEach(item => {
       if (item.type === 'KAS_MASUK') {
         expectedCash += item.amount;
-        if (item.category === 'Penjualan Kasir' || item.category === 'Pelunasan Kasbon' || item.category === 'Top-Up Saldo Deposit') {
+        if (item.referenceType === 'DEBT_SETTLEMENT' || item.category === 'Pelunasan Kasbon') {
+          debtSettlementsCash += item.amount;
+        } else if (item.referenceType === 'DEPOSIT_TOPUP' || item.category === 'Top-Up Saldo Deposit') {
+          depositTopUpsCash += item.amount;
+        } else if (item.category === 'Penjualan Kasir' || item.referenceType === 'TRANSACTION' || item.category.startsWith('Penjualan ')) {
           salesCash += item.amount;
         } else {
           manualInCash += item.amount;
@@ -362,6 +368,8 @@ export const BookkeepingView: React.FC = () => {
       physicalTotal,
       difference,
       salesCash,
+      debtSettlementsCash,
+      depositTopUpsCash,
       expensesCash,
       manualInCash,
       manualOutCash,
@@ -431,6 +439,8 @@ export const BookkeepingView: React.FC = () => {
       difference: todayCashCalculation.difference,
       denominations,
       totalSalesCash: todayCashCalculation.salesCash,
+      totalDebtSettlementsCash: todayCashCalculation.debtSettlementsCash,
+      totalDepositTopUpsCash: todayCashCalculation.depositTopUpsCash,
       totalExpensesCash: todayCashCalculation.expensesCash,
       totalManualInCash: todayCashCalculation.manualInCash,
       totalManualOutCash: todayCashCalculation.manualOutCash,
@@ -1280,6 +1290,18 @@ export const BookkeepingView: React.FC = () => {
                     <span>Penjualan Kasir Hari Ini (Tunai):</span>
                     <span className="font-semibold text-slate-800">{formatRupiah(todayCashCalculation.salesCash)}</span>
                   </div>
+                  {todayCashCalculation.debtSettlementsCash > 0 && (
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span>(+) Penerimaan Pelunasan Kasbon (Tunai):</span>
+                      <span className="font-semibold text-emerald-600">+{formatRupiah(todayCashCalculation.debtSettlementsCash)}</span>
+                    </div>
+                  )}
+                  {todayCashCalculation.depositTopUpsCash > 0 && (
+                    <div className="flex justify-between py-1 border-b border-slate-100">
+                      <span>(+) Top-Up Saldo Deposit (Tunai):</span>
+                      <span className="font-semibold text-emerald-600">+{formatRupiah(todayCashCalculation.depositTopUpsCash)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span>Kas Masuk Manual Hari Ini:</span>
                     <span className="font-semibold text-emerald-600">+{formatRupiah(todayCashCalculation.manualInCash)}</span>
@@ -1919,30 +1941,6 @@ export const BookkeepingView: React.FC = () => {
                   placeholder="Contoh: Tambah modal kas awal laci"
                   value={entryTitle}
                   onChange={e => setEntryTitle(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:ring-1 focus:ring-amber-500"
-                />
-              </div>
-
-              {/* Related Party / Person */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Pihak Terkait / Sumber / Penerima (Opsional)</label>
-                <input
-                  type="text"
-                  placeholder="Contoh: Pemilik Warung (Iyan)"
-                  value={entryParty}
-                  onChange={e => setEntryParty(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:ring-1 focus:ring-amber-500"
-                />
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Catatan Tambahan (Opsional)</label>
-                <textarea
-                  rows={2}
-                  placeholder="Catatan detail lainnya..."
-                  value={entryNotes}
-                  onChange={e => setEntryNotes(e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:ring-1 focus:ring-amber-500"
                 />
               </div>
