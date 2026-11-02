@@ -248,35 +248,35 @@ function MainApp() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Geometric Balance Top Header */}
-        <header className="h-16 sm:h-20 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-8 no-print shrink-0">
+        {/* Minimalist & User-Friendly Top Header */}
+        <header className="h-14 sm:h-16 bg-white border-b border-slate-200/80 flex items-center justify-between px-3.5 sm:px-6 no-print shrink-0">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               id="mobile-menu-toggle-btn"
               onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100 shrink-0"
+              className="lg:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition shrink-0"
               title="Buka Menu Navigasi"
             >
-              <Menu size={20} />
+              <Menu size={18} />
             </button>
 
             {menuHistory.length > 1 && (
               <button
                 id="header-back-btn"
                 onClick={handleGoBack}
-                className="p-1.5 sm:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1.5 shrink-0 text-xs font-semibold cursor-pointer border border-slate-200"
-                title="Kembali ke menu sebelumnya (atau gunakan tombol kembali perangkat)"
+                className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 transition flex items-center gap-1.5 shrink-0 text-xs font-medium border border-slate-200 cursor-pointer"
+                title="Kembali ke menu sebelumnya"
               >
-                <ArrowLeft size={16} className="text-slate-700" />
-                <span className="hidden sm:inline text-xs">Kembali</span>
+                <ArrowLeft size={14} className="text-slate-600" />
+                <span className="hidden sm:inline">Kembali</span>
               </button>
             )}
 
             <div className="min-w-0">
-              <h2 className="text-base sm:text-lg font-semibold tracking-tight text-slate-900 truncate">
+              <h2 className="text-sm sm:text-base font-bold tracking-tight text-slate-900 truncate">
                 {tabTitles[activeTab]?.title}
               </h2>
-              <p className="text-[11px] sm:text-xs text-slate-500 hidden sm:block truncate">
+              <p className="text-[11px] text-slate-500 hidden sm:block truncate">
                 {tabTitles[activeTab]?.subtitle}
               </p>
             </div>
@@ -288,19 +288,19 @@ function MainApp() {
               <button
                 id="header-new-sale-btn"
                 onClick={() => handleTabChange('pos')}
-                className="px-3.5 py-1.5 sm:px-4 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition"
               >
-                <Plus size={15} />
-                <span>+ Kasir POS</span>
+                <Plus size={14} />
+                <span>+ Kasir</span>
               </button>
             ) : (
               <button
                 id="header-view-report-btn"
                 onClick={() => handleTabChange('reports')}
-                className="px-3.5 py-1.5 sm:px-4 sm:py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition"
               >
-                <BarChart3 size={15} />
-                <span>Lihat Laporan</span>
+                <BarChart3 size={14} />
+                <span>Laporan</span>
               </button>
             )}
 
@@ -309,28 +309,28 @@ function MainApp() {
               <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200">
                 <button
                   onClick={() => handleTabChange('users')}
-                  className="flex items-center gap-2 p-1 rounded-xl hover:bg-slate-100 transition"
+                  className="flex items-center gap-2 p-1 rounded-lg hover:bg-slate-50 transition"
                   title="Lihat Manajemen Pengguna"
                 >
                   <div
                     className={`w-7 h-7 rounded-lg ${
                       currentUser.avatarColor || 'bg-blue-600'
-                    } text-white font-bold text-xs flex items-center justify-center`}
+                    } text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-2xs`}
                   >
                     {currentUser.name.charAt(0).toUpperCase()}
                   </div>
-                  <div className="text-left hidden xl:block">
-                    <p className="text-xs font-bold text-slate-800 leading-tight">{currentUser.name}</p>
-                    <p className="text-[10px] text-slate-400 font-mono leading-tight">{currentUser.email}</p>
+                  <div className="text-left hidden xl:block min-w-0">
+                    <p className="text-xs font-semibold text-slate-800 leading-tight truncate">{currentUser.name}</p>
+                    <p className="text-[10px] text-slate-400 leading-tight truncate">{currentUser.email || 'Kasir'}</p>
                   </div>
                 </button>
 
                 <button
                   onClick={() => setShowExitConfirmModal(true)}
-                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
                   title="Keluar Aplikasi"
                 >
-                  <LogOut size={16} />
+                  <LogOut size={15} />
                 </button>
               </div>
             )}

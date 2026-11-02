@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 
 export default defineConfig(() => {
   return {
-    base: '/Hannabee1/',
+    base: process.env.GITHUB_ACTIONS === 'true' ? '/Hannabee1/' : (process.env.VITE_BASE || '/'),
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

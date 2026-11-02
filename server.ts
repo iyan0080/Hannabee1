@@ -4,7 +4,23 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 
 const app = express();
-const PORT = 3000;
+
+// Parse port and host from CLI args or environment variables
+let port = Number(process.env.PORT) || 3000;
+let host = process.env.HOST || "0.0.0.0";
+
+const portArgIdx = process.argv.indexOf("--port");
+if (portArgIdx !== -1 && process.argv[portArgIdx + 1]) {
+  const parsedPort = Number(process.argv[portArgIdx + 1]);
+  if (!isNaN(parsedPort) && parsedPort > 0) {
+    port = parsedPort;
+  }
+}
+
+const hostArgIdx = process.argv.indexOf("--host");
+if (hostArgIdx !== -1 && process.argv[hostArgIdx + 1]) {
+  host = process.argv[hostArgIdx + 1];
+}
 
 app.use(express.json({ limit: "20mb" }));
 
@@ -74,10 +90,30 @@ async function startServer() {
   try {
     if (process.env.NODE_ENV !== "production") {
       const vite = await createViteServer({
-        server: { middlewareMode: true },
+        base: "/",
+        server: {
+          middlewareMode: true,
+          hmr: false,
+        },
         appType: "spa",
       });
       app.use(vite.middlewares);
+
+      // SPA fallback in development
+      app.use("*", async (req, res, next) => {
+        const url = req.originalUrl;
+        if (url.startsWith("/api")) {
+          return next();
+        }
+        try {
+          let template = fs.readFileSync(path.resolve(process.cwd(), "index.html"), "utf-8");
+          template = await vite.transformIndexHtml(url, template);
+          res.status(200).set({ "Content-Type": "text/html" }).end(template);
+        } catch (e: any) {
+          vite.ssrFixStacktrace(e);
+          next(e);
+        }
+      });
     } else {
       const distPath = path.join(process.cwd(), "dist");
       app.use(express.static(distPath));
@@ -86,9 +122,26 @@ async function startServer() {
       });
     }
 
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`WarungKu Pintar Server running on port ${PORT}`);
+    const server = app.listen(port, host, () => {
+      console.log(`WarungKu Pintar Server running on http://${host}:${port}`);
     });
+
+    server.on("error", (err: any) => {
+      if (err.code === "EADDRINUSE") {
+        console.error(`Port ${port} is already in use.`);
+      } else {
+        console.error("Server error:", err);
+      }
+    });
+
+    const shutdown = () => {
+      server.close(() => {
+        process.exit(0);
+      });
+    };
+
+    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", shutdown);
   } catch (err) {
     console.error("Failed to start server:", err);
     process.exit(1);

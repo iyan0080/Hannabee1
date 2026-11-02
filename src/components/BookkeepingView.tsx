@@ -452,24 +452,24 @@ export const BookkeepingView: React.FC = () => {
 
   return (
     <div id="bookkeeping-container" className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header Section */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
-            <BookOpen className="w-6 h-6" />
+      {/* Action Header Section */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold shrink-0">
+            <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">
-              Buku Kas & Pembukuan Warung
-            </h1>
-            <p className="text-sm text-slate-500">
-              Pencatatan mutasi kas, arus kas SAK EMKM, dan rekonsiliasi tutup laci kasir
+          <div className="min-w-0">
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-tight truncate">
+              Buku Kas & Jurnal Warung
+            </h3>
+            <p className="text-xs text-slate-500 truncate">
+              Mutasi kas masuk/keluar, opname laci kasir, dan arus kas SAK EMKM
             </p>
           </div>
         </div>
 
         {/* Quick Actions */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             id="btn-open-income-entry"
             onClick={() => {
@@ -481,9 +481,9 @@ export const BookkeepingView: React.FC = () => {
               setEntryTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
               setIsEntryModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-xs transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
           >
-            <PlusCircle className="w-4 h-4" />
+            <PlusCircle className="w-3.5 h-3.5" />
             <span>Kas Masuk</span>
           </button>
           <button
@@ -497,9 +497,9 @@ export const BookkeepingView: React.FC = () => {
               setEntryTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
               setIsEntryModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold shadow-xs transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
           >
-            <MinusCircle className="w-4 h-4" />
+            <MinusCircle className="w-3.5 h-3.5" />
             <span>Kas Keluar</span>
           </button>
           <button
@@ -508,54 +508,54 @@ export const BookkeepingView: React.FC = () => {
               setCatFeedback(null);
               setIsCategoryModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 hover:bg-amber-50 hover:border-amber-300 text-slate-700 hover:text-amber-800 text-sm font-semibold shadow-2xs transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
             title="Kelola Kategori Kas Masuk & Kas Keluar"
           >
-            <Tag className="w-4 h-4 text-amber-600" />
-            <span>Kategori Kas</span>
+            <Tag className="w-3.5 h-3.5 text-slate-500" />
+            <span>Kategori</span>
           </button>
         </div>
       </div>
 
       {/* Sub-Navigation Tabs */}
-      <div className="flex border-b border-slate-200 bg-white rounded-xl p-1.5 shadow-2xs gap-1">
+      <div className="flex border border-slate-200/80 bg-white rounded-xl p-1 shadow-2xs gap-1">
         <button
           id="tab-btn-ledger"
           onClick={() => setActiveTab('ledger')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
             activeTab === 'ledger'
-              ? 'bg-amber-600 text-white shadow-xs'
+              ? 'bg-slate-900 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <BookOpen className="w-4 h-4" />
-          <span>Buku Kas & Jurnal Mutasi</span>
+          <BookOpen className="w-3.5 h-3.5" />
+          <span className="truncate">Buku Kas & Mutasi</span>
         </button>
 
         <button
           id="tab-btn-closing"
           onClick={() => setActiveTab('closing')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
             activeTab === 'closing'
-              ? 'bg-amber-600 text-white shadow-xs'
+              ? 'bg-slate-900 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <Calculator className="w-4 h-4" />
-          <span>Tutup Kas & Opname Laci</span>
+          <Calculator className="w-3.5 h-3.5" />
+          <span className="truncate">Tutup Kas & Laci</span>
         </button>
 
         <button
           id="tab-btn-cashflow"
           onClick={() => setActiveTab('cash_flow')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
             activeTab === 'cash_flow'
-              ? 'bg-amber-600 text-white shadow-xs'
+              ? 'bg-slate-900 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <TrendingUp className="w-4 h-4" />
-          <span>Laporan Arus Kas</span>
+          <TrendingUp className="w-3.5 h-3.5" />
+          <span className="truncate">Laporan Arus Kas</span>
         </button>
       </div>
 
