@@ -46,6 +46,7 @@ import {
   ChevronUp,
   Receipt,
   Clock,
+  RefreshCw,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -146,6 +147,11 @@ export const ShoppingListManager: React.FC = () => {
   const [waIncludeReceiptReminder, setWaIncludeReceiptReminder] = useState(true);
   const [waSelectedItemIds, setWaSelectedItemIds] = useState<string[]>([]);
   const [isPickingContact, setIsPickingContact] = useState(false);
+
+  // Gemini AI Smart Shopping Advisor
+  const [aiShoppingAdvice, setAiShoppingAdvice] = useState<string | null>(null);
+  const [isAiShoppingLoading, setIsAiShoppingLoading] = useState(false);
+  const [aiShoppingError, setAiShoppingError] = useState<string | null>(null);
 
   // Add / Edit Modal
   const [showModal, setShowModal] = useState(false);
@@ -777,6 +783,47 @@ export const ShoppingListManager: React.FC = () => {
     openWhatsApp('', msg);
   };
 
+  // Gemini AI Smart Shopping Advice
+  const handleGetAiShoppingAdvice = async () => {
+    setIsAiShoppingLoading(true);
+    setAiShoppingError(null);
+    try {
+      const pendingItemsList = pendingItems.map(p => ({
+        name: p.name,
+        quantity: p.quantity,
+        unit: p.unit,
+        category: p.category,
+        priority: p.priority,
+        estimatedPrice: p.estimatedPrice,
+        notes: p.notes,
+      }));
+
+      const res = await fetch('/api/ai/advisor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'shopping_optimizer',
+          summary: {
+            storeName: storeSettings.storeName,
+            pendingItems: pendingItemsList,
+            totalBudget: totalEstimatedPendingBudget,
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (data.content) {
+        setAiShoppingAdvice(data.content);
+      } else {
+        setAiShoppingError('Tidak dapat menghasilkan rekomendasi belanja saat ini.');
+      }
+    } catch {
+      setAiShoppingError('Gagal terhubung ke layanan Gemini AI.');
+    } finally {
+      setIsAiShoppingLoading(false);
+    }
+  };
+
   // Export to Excel (Active list)
   const handleExportExcel = () => {
     const rows = activeShoppingItems.map((item, idx) => {
@@ -996,6 +1043,18 @@ export const ShoppingListManager: React.FC = () => {
                   <span>Excel</span>
                 </button>
 
+                {/* Gemini AI Smart Shopping Advisor Button */}
+                <button
+                  id="shopping-gemini-advisor-btn"
+                  onClick={handleGetAiShoppingAdvice}
+                  disabled={isAiShoppingLoading}
+                  className="px-3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs group cursor-pointer disabled:opacity-50"
+                  title="Minta saran prioritas & tips hemat belanja bahan dari Gemini AI"
+                >
+                  <Sparkles size={15} className={`text-amber-300 ${isAiShoppingLoading ? 'animate-spin' : ''}`} />
+                  <span>{isAiShoppingLoading ? 'Menilai...' : 'Saran AI Belanja'}</span>
+                </button>
+
                 <button
                   id="shopping-add-item-btn"
                   onClick={handleOpenAddModal}
@@ -1075,6 +1134,70 @@ export const ShoppingListManager: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Gemini AI Smart Shopping Advisor Box */}
+      {(aiShoppingAdvice || isAiShoppingLoading || aiShoppingError) && (
+        <div className="bg-gradient-to-br from-indigo-50/80 via-white to-purple-50/80 p-4 sm:p-5 rounded-2xl border border-indigo-100 shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Sparkles size={16} className="text-amber-300" />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-sm text-slate-900">Rekomendasi Belanja Gemini AI</h4>
+                  <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded-md font-mono">
+                    Prioritas & Tips Hemat
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Analisis pintar prioritas bahan baku yang butuh dibeli duluan dan panduan penghematan anggaran.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleGetAiShoppingAdvice}
+                disabled={isAiShoppingLoading}
+                className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition disabled:opacity-50 cursor-pointer"
+              >
+                <RefreshCw size={13} className={isAiShoppingLoading ? 'animate-spin' : ''} />
+                <span>{isAiShoppingLoading ? 'Menilai...' : 'Perbarui'}</span>
+              </button>
+              <button
+                onClick={() => { setAiShoppingAdvice(null); setAiShoppingError(null); }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition"
+                title="Tutup Saran AI"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+
+          {aiShoppingError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2">
+              <AlertTriangle size={15} className="shrink-0 text-rose-500" />
+              <span>{aiShoppingError}</span>
+            </div>
+          )}
+
+          {isAiShoppingLoading && (
+            <div className="py-5 flex flex-col items-center justify-center gap-2 bg-white/70 rounded-xl border border-indigo-100">
+              <Sparkles size={20} className="text-indigo-600 animate-pulse" />
+              <p className="text-xs font-medium text-slate-600">
+                Gemini AI sedang meninjau {pendingItems.length} bahan baku pending & estimasi anggaran...
+              </p>
+            </div>
+          )}
+
+          {aiShoppingAdvice && !isAiShoppingLoading && (
+            <div className="bg-white p-4 rounded-xl border border-indigo-100 text-xs text-slate-800 leading-relaxed space-y-2 whitespace-pre-wrap">
+              {aiShoppingAdvice}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Save to History Suggestion Banner in Active Tab */}
       {activeTab === 'ACTIVE' && purchasedItems.length > 0 && (

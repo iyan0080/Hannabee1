@@ -62,15 +62,38 @@ export const Navbar: React.FC<NavbarProps> = ({
   const totalDepositAll = customers.reduce((sum, c) => sum + (c.depositBalance || 0), 0);
   const pendingShoppingCount = shoppingItems.filter(s => s.status !== 'PURCHASED').length;
 
-  const navItems: { id: NavTab; label: string; icon: React.ReactNode; badge?: number | string; badgeColor?: string }[] = [
-    { id: 'pos', label: 'Dashboard & Kasir', icon: <LayoutDashboard size={18} />, badge: cartItemCount > 0 ? `${cartItemCount} item` : undefined, badgeColor: 'bg-blue-500' },
-    { id: 'shopping', label: 'Catatan Belanja Bahan', icon: <ClipboardList size={18} />, badge: pendingShoppingCount > 0 ? `${pendingShoppingCount}` : undefined, badgeColor: 'bg-amber-500' },
-    { id: 'bookkeeping', label: 'Buku Kas & Pembukuan', icon: <BookOpen size={18} /> },
-    { id: 'reports', label: 'Pusat Laporan', icon: <BarChart3 size={18} />, badge: unpaidCount > 0 ? `${unpaidCount} Bon` : undefined, badgeColor: 'bg-amber-500' },
-    { id: 'menu', label: 'Menu & Kategori', icon: <UtensilsCrossed size={18} /> },
-    { id: 'customers', label: 'Pelanggan & Saldo', icon: <Users size={18} />, badge: totalDepositAll > 0 ? 'Saldo' : undefined, badgeColor: 'bg-emerald-500' },
-    { id: 'users', label: 'Manajemen Pengguna', icon: <UserCheck size={18} />, badge: users.length > 0 ? `${users.length} Akun` : undefined, badgeColor: 'bg-indigo-500' },
-    { id: 'settings', label: 'Pengaturan Usaha', icon: <Settings size={18} /> },
+  const navSections: {
+    sectionTitle: string;
+    items: {
+      id: NavTab;
+      label: string;
+      icon: React.ReactNode;
+      badge?: number | string;
+    }[];
+  }[] = [
+    {
+      sectionTitle: 'OPERASIONAL',
+      items: [
+        { id: 'pos', label: 'Kasir POS & Pesanan', icon: <LayoutDashboard size={18} />, badge: cartItemCount > 0 ? `${cartItemCount}` : undefined },
+        { id: 'shopping', label: 'Catatan Belanja Bahan', icon: <ClipboardList size={18} />, badge: pendingShoppingCount > 0 ? `${pendingShoppingCount}` : undefined },
+        { id: 'bookkeeping', label: 'Buku Kas & Mutasi', icon: <BookOpen size={18} /> },
+      ],
+    },
+    {
+      sectionTitle: 'DATA & ANALITIK',
+      items: [
+        { id: 'reports', label: 'Pusat Laporan', icon: <BarChart3 size={18} />, badge: unpaidCount > 0 ? `${unpaidCount} Bon` : undefined },
+        { id: 'menu', label: 'Menu & Kategori', icon: <UtensilsCrossed size={18} /> },
+        { id: 'customers', label: 'Pelanggan & Saldo', icon: <Users size={18} />, badge: totalDepositAll > 0 ? 'Saldo' : undefined },
+      ],
+    },
+    {
+      sectionTitle: 'PENGATURAN',
+      items: [
+        { id: 'users', label: 'Manajemen Pengguna', icon: <UserCheck size={18} />, badge: users.length > 0 ? `${users.length}` : undefined },
+        { id: 'settings', label: 'Pengaturan Usaha', icon: <Settings size={18} /> },
+      ],
+    },
   ];
 
   const handleNavClick = (id: NavTab) => {
@@ -117,46 +140,53 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Navigation Items */}
-        <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
-          {navItems.map(item => {
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                id={`sidebar-nav-${item.id}`}
-                onClick={() => handleNavClick(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all text-left group ${
-                  isActive
-                    ? 'bg-blue-600 text-white font-semibold shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
-                }`}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span
-                    className={`transition-colors shrink-0 ${
-                      isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
-                    }`}
-                  >
-                    {item.icon}
-                  </span>
-                  <span className="truncate">{item.label}</span>
-                </div>
-
-                {item.badge && (
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded-md font-semibold shrink-0 font-mono transition-colors ${
+        {/* Navigation Items Grouped */}
+        <nav className="flex-1 px-3 py-3 space-y-4 overflow-y-auto">
+          {navSections.map((sec, secIdx) => (
+            <div key={secIdx} className="space-y-1">
+              <p className="px-3 text-[10px] font-bold text-slate-500 tracking-wider">
+                {sec.sectionTitle}
+              </p>
+              {sec.items.map(item => {
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    id={`sidebar-nav-${item.id}`}
+                    onClick={() => handleNavClick(item.id)}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all text-left group cursor-pointer ${
                       isActive
-                        ? 'bg-white/20 text-white'
-                        : 'bg-slate-800 text-slate-300 border border-slate-700/60'
+                        ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                        : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
                     }`}
                   >
-                    {item.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span
+                        className={`transition-colors shrink-0 ${
+                          isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                        }`}
+                      >
+                        {item.icon}
+                      </span>
+                      <span className="truncate">{item.label}</span>
+                    </div>
+
+                    {item.badge && (
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-md font-semibold shrink-0 font-mono transition-colors ${
+                          isActive
+                            ? 'bg-white/20 text-white'
+                            : 'bg-slate-800 text-slate-300 border border-slate-700/60'
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* Current Logged In User Profile Card */}

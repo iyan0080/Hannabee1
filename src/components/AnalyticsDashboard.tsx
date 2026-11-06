@@ -26,6 +26,9 @@ import {
   Filter,
   CalendarRange,
   ChevronDown,
+  Sparkles,
+  RefreshCw,
+  X,
 } from 'lucide-react';
 
 const COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4'];
@@ -37,6 +40,11 @@ export const AnalyticsDashboard: React.FC = () => {
 
   // Period Selector State
   const [periodType, setPeriodType] = useState<AnalyticsPeriodType>('7_DAYS');
+
+  // Gemini AI Business Insight State
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   
   // Custom Date Range State
   const getTodayISO = () => new Date().toISOString().slice(0, 10);
@@ -243,6 +251,48 @@ export const AnalyticsDashboard: React.FC = () => {
     }));
   }, [periodTransactions]);
 
+  const handleRequestAiInsight = async () => {
+    setIsAiLoading(true);
+    setAiError(null);
+    try {
+      const topSellingList = topProducts.slice(0, 5).map(p => ({
+        name: p.name,
+        quantity: p.quantity,
+        revenue: p.revenue,
+      }));
+
+      const res = await fetch('/api/ai/advisor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'business_summary',
+          summary: {
+            storeName: storeSettings.storeName,
+            period: periodLabel,
+            totalSales: periodSales,
+            transactionCount: periodTransactionCount,
+            netProfit: periodNetProfit,
+            grossProfit: periodGrossProfit,
+            totalExpenses: periodTotalExpenses,
+            activeDebt: totalActiveDebt,
+            topProducts: topSellingList,
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (data.content) {
+        setAiSummary(data.content);
+      } else {
+        setAiError('Tidak ada konten analisis yang diterima.');
+      }
+    } catch {
+      setAiError('Gagal menghubungi layanan Gemini AI.');
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-5 space-y-5">
       
@@ -364,6 +414,71 @@ export const AnalyticsDashboard: React.FC = () => {
             <span className="text-[11px] text-slate-500 italic">
               Data analitik otomatis diperbarui sesuai rentang tanggal yang Anda tentukan.
             </span>
+          </div>
+        )}
+      </div>
+
+      {/* Gemini AI Advisor Summary Box */}
+      <div className="bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/70 p-4 sm:p-5 rounded-2xl border border-indigo-100 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Sparkles size={18} className="text-amber-300" />
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="font-bold text-sm text-slate-900">Analisis Kinerja Gemini AI</h4>
+                <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded-md font-mono">
+                  Gemini 3.8
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Ulasan otomatis performa omzet, margin keuntungan produk, kasbon, dan saran tindakan bisnis.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              id="analytics-request-gemini-ai-btn"
+              onClick={handleRequestAiInsight}
+              disabled={isAiLoading}
+              className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-2xs transition disabled:opacity-50 cursor-pointer"
+            >
+              <RefreshCw size={13} className={isAiLoading ? 'animate-spin' : ''} />
+              <span>{isAiLoading ? 'Menganalisis...' : aiSummary ? 'Perbarui Analisis' : 'Minta Analisis AI'}</span>
+            </button>
+            {aiSummary && (
+              <button
+                onClick={() => setAiSummary(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition"
+                title="Tutup Ulasan AI"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {aiError && (
+          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2">
+            <AlertCircle size={15} className="shrink-0 text-rose-500" />
+            <span>{aiError}</span>
+          </div>
+        )}
+
+        {isAiLoading && (
+          <div className="py-6 flex flex-col items-center justify-center gap-2 bg-white/70 rounded-xl border border-indigo-100">
+            <Sparkles size={22} className="text-indigo-600 animate-pulse" />
+            <p className="text-xs font-medium text-slate-600">
+              Gemini AI sedang menganalisis data penjualan & profitabilitas periode {periodLabel}...
+            </p>
+          </div>
+        )}
+
+        {aiSummary && !isAiLoading && (
+          <div className="bg-white p-4 rounded-xl border border-indigo-100 text-xs text-slate-800 leading-relaxed space-y-2 whitespace-pre-wrap">
+            {aiSummary}
           </div>
         )}
       </div>

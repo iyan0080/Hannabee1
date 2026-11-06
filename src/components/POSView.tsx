@@ -149,6 +149,14 @@ export const POSView: React.FC = () => {
   }, [products, selectedCategory, searchQuery]);
 
   // Cart Calculations
+  const cartItemQuantityMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of cart) {
+      map.set(item.productId, (map.get(item.productId) || 0) + item.quantity);
+    }
+    return map;
+  }, [cart]);
+
   const cartSubtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
   const taxAmount = storeSettings.enableTax ? (cartSubtotal * storeSettings.taxRate) / 100 : 0;
   const cartFinalTotal = Math.max(0, cartSubtotal - discountAmount + taxAmount);
@@ -393,20 +401,33 @@ export const POSView: React.FC = () => {
             {filteredProducts.map(product => {
               const hasVariants = product.variants && product.variants.length > 0;
               const isLowStock = product.stock <= 5;
+              const inCartQty = cartItemQuantityMap.get(product.id) || 0;
 
               return (
                 <button
                   key={product.id}
                   id={`product-card-${product.id}`}
                   onClick={() => handleProductClick(product)}
-                  className="bg-white p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-500 hover:shadow-md transition-all text-left flex flex-col justify-between group relative overflow-hidden active:scale-95"
+                  className={`p-3.5 rounded-2xl border transition-all text-left flex flex-col justify-between group relative overflow-hidden active:scale-95 ${
+                    inCartQty > 0
+                      ? 'bg-emerald-50/40 border-emerald-500 shadow-xs ring-1 ring-emerald-500/30'
+                      : 'bg-white border-slate-200 hover:border-emerald-500 hover:shadow-md'
+                  }`}
                 >
-                  {hasVariants && (
-                    <span className="absolute top-2.5 right-2.5 z-10 bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5 shadow-2xs">
-                      <Layers size={10} />
-                      {product.variants.length} Varian
-                    </span>
-                  )}
+                  {/* Badge: Variants or In-Cart Status */}
+                  <div className="absolute top-2.5 right-2.5 z-10 flex flex-col items-end gap-1">
+                    {hasVariants && (
+                      <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5 shadow-2xs">
+                        <Layers size={10} />
+                        {product.variants.length} Varian
+                      </span>
+                    )}
+                    {inCartQty > 0 && !hasVariants && (
+                      <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-2xs">
+                        {inCartQty} di keranjang
+                      </span>
+                    )}
+                  </div>
                   
                   <div>
                     <div className="flex items-center gap-3 mb-2.5">
@@ -438,8 +459,19 @@ export const POSView: React.FC = () => {
                         {formatRupiah(product.basePrice)}
                       </span>
                     </div>
-                    <div className="w-7 h-7 rounded-xl bg-emerald-50 group-hover:bg-emerald-600 text-emerald-600 group-hover:text-white flex items-center justify-center transition shadow-2xs">
-                      <Plus size={15} />
+                    <div className={`flex items-center justify-center font-bold text-xs transition rounded-xl ${
+                      inCartQty > 0
+                        ? 'px-2 py-1 bg-emerald-600 text-white shadow-2xs gap-1'
+                        : 'w-7 h-7 bg-emerald-50 group-hover:bg-emerald-600 text-emerald-600 group-hover:text-white shadow-2xs'
+                    }`}>
+                      {inCartQty > 0 ? (
+                        <>
+                          <span>{inCartQty}</span>
+                          <Plus size={12} />
+                        </>
+                      ) : (
+                        <Plus size={15} />
+                      )}
                     </div>
                   </div>
                 </button>
@@ -455,7 +487,7 @@ export const POSView: React.FC = () => {
         </div>
 
         {/* RIGHT COLUMN: Interactive Cart & Fast Checkout */}
-        <div className="lg:col-span-5 xl:col-span-4 flex flex-col space-y-4">
+        <div id="cart-checkout-container" className="lg:col-span-5 xl:col-span-4 flex flex-col space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
             
             {/* Cart Header & Customer selector */}
@@ -1548,6 +1580,36 @@ export const POSView: React.FC = () => {
             setCompletedTransaction(trx);
           }}
         />
+      )}
+
+      {/* 7. Floating Mobile Cart Checkout Pill (appears on small screens when cart > 0) */}
+      {cart.length > 0 && (
+        <div className="lg:hidden fixed bottom-16 sm:bottom-4 left-3 right-3 z-30 pointer-events-auto">
+          <button
+            id="mobile-floating-cart-btn"
+            onClick={() => {
+              const el = document.getElementById('cart-checkout-container');
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth' });
+              }
+            }}
+            className="w-full bg-slate-900/95 hover:bg-slate-900 text-white p-3 rounded-2xl shadow-xl flex items-center justify-between border border-slate-700/70 backdrop-blur-md active:scale-[0.99] transition-transform"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold text-xs">
+                {cart.reduce((s, i) => s + i.quantity, 0)}
+              </div>
+              <div className="text-left">
+                <p className="text-[10px] text-slate-400 font-medium leading-none">Total Belanja</p>
+                <p className="text-sm font-bold text-emerald-400 font-mono leading-tight">{formatRupiah(cartFinalTotal)}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded-xl transition shadow-xs">
+              <span>Buka Kasir</span>
+              <ArrowUpRight size={14} />
+            </div>
+          </button>
+        </div>
       )}
     </div>
   );

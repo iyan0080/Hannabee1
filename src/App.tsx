@@ -11,7 +11,7 @@ import { CustomersView } from './components/CustomersView';
 import { UserManagementView } from './components/UserManagementView';
 import { SettingsView } from './components/SettingsView';
 import { AuthScreen } from './components/AuthScreen';
-import { Menu, Plus, ShoppingCart, BarChart3, LogOut, UserCheck, AlertTriangle, X, Check, ArrowLeft } from 'lucide-react';
+import { Menu, Plus, ShoppingCart, BarChart3, LogOut, UserCheck, AlertTriangle, X, Check, ArrowLeft, BookOpen, ShoppingBag, MoreHorizontal } from 'lucide-react';
 
 function MainApp() {
   const { closeTopModal, hasOpenModal } = useModal();
@@ -338,7 +338,7 @@ function MainApp() {
         </header>
 
         {/* View Routing with Scroll */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto pb-20 sm:pb-0">
           {activeTab === 'pos' && <POSView />}
           {activeTab === 'shopping' && <ShoppingListManager />}
           {activeTab === 'bookkeeping' && <BookkeepingView />}
@@ -349,6 +349,70 @@ function MainApp() {
           {activeTab === 'settings' && <SettingsView />}
         </div>
       </main>
+
+      {/* Mobile Bottom Navigation Bar (Fast 1-thumb switching for Cashier) */}
+      <nav aria-label="Navigasi Bawah Mobile" className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-2 py-1.5 flex items-center justify-around no-print shadow-lg">
+        <button
+          id="mobile-bottom-nav-pos"
+          onClick={() => handleTabChange('pos')}
+          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition ${
+            activeTab === 'pos'
+              ? 'text-blue-600 font-bold'
+              : 'text-slate-500 hover:text-slate-800 font-medium'
+          }`}
+        >
+          <ShoppingCart size={19} className={activeTab === 'pos' ? 'stroke-[2.5]' : ''} />
+          <span className="text-[10px] mt-0.5">Kasir</span>
+        </button>
+
+        <button
+          id="mobile-bottom-nav-shopping"
+          onClick={() => handleTabChange('shopping')}
+          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition ${
+            activeTab === 'shopping'
+              ? 'text-blue-600 font-bold'
+              : 'text-slate-500 hover:text-slate-800 font-medium'
+          }`}
+        >
+          <ShoppingBag size={19} className={activeTab === 'shopping' ? 'stroke-[2.5]' : ''} />
+          <span className="text-[10px] mt-0.5">Belanja</span>
+        </button>
+
+        <button
+          id="mobile-bottom-nav-bookkeeping"
+          onClick={() => handleTabChange('bookkeeping')}
+          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition ${
+            activeTab === 'bookkeeping'
+              ? 'text-blue-600 font-bold'
+              : 'text-slate-500 hover:text-slate-800 font-medium'
+          }`}
+        >
+          <BookOpen size={19} className={activeTab === 'bookkeeping' ? 'stroke-[2.5]' : ''} />
+          <span className="text-[10px] mt-0.5">Buku Kas</span>
+        </button>
+
+        <button
+          id="mobile-bottom-nav-reports"
+          onClick={() => handleTabChange('reports')}
+          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition ${
+            activeTab === 'reports'
+              ? 'text-blue-600 font-bold'
+              : 'text-slate-500 hover:text-slate-800 font-medium'
+          }`}
+        >
+          <BarChart3 size={19} className={activeTab === 'reports' ? 'stroke-[2.5]' : ''} />
+          <span className="text-[10px] mt-0.5">Laporan</span>
+        </button>
+
+        <button
+          id="mobile-bottom-nav-more"
+          onClick={() => setMobileMenuOpen(true)}
+          className="flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-slate-500 hover:text-slate-800 font-medium transition"
+        >
+          <MoreHorizontal size={19} />
+          <span className="text-[10px] mt-0.5">Menu</span>
+        </button>
+      </nav>
 
       {/* Confirmation Modal to Exit Application */}
       {showExitConfirmModal && (
