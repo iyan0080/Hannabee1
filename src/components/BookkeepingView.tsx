@@ -95,10 +95,12 @@ export const BookkeepingView: React.FC = () => {
     deleteCashClosingRecord,
     getAllJournalEntries,
     calculateCashFlow,
+    shoppingItems,
   } = useWarung();
 
   // Active Sub-Tab
   const [activeTab, setActiveTab] = useState<BookkeepingTab>('ledger');
+  const pendingShoppingCount = useMemo(() => shoppingItems.filter(s => s.status === 'PENDING' && !s.isArchived).length, [shoppingItems]);
 
   // Filter State for Ledger
   const [periodOption, setPeriodOption] = useState<PeriodOption>('this_month');
@@ -1581,6 +1583,39 @@ export const BookkeepingView: React.FC = () => {
                       <span>Total Pengeluaran Kas Operasional</span>
                       <span>({formatRupiah(cashFlowData.operatingOutflows.total)})</span>
                     </div>
+
+                    {cashFlowData.operatingOutflows.total === 0 && (
+                      <div className="mt-2.5 p-3.5 bg-amber-50/80 border border-amber-200/90 rounded-xl text-xs text-amber-950 space-y-2">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                          <Info className="w-4 h-4 shrink-0 text-amber-600" />
+                          <span>Kenapa Pengeluaran Masih Kosong (Rp 0)?</span>
+                        </div>
+                        <p className="text-slate-600 text-[11px] leading-relaxed">
+                          Pengeluaran kas operasional tercatat <b>(Rp 0)</b> karena belum ada transaksi kas keluar yang dibukukan untuk periode ini.
+                          {pendingShoppingCount > 0 && (
+                            <> Saat ini ada <b>{pendingShoppingCount} item di Catatan Belanja Bahan</b> yang masih berstatus <i>Rencana Belanja (Pending)</i> sehingga belum memotong kas.</>
+                          )}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEntryType('KAS_KELUAR');
+                              const firstCat = bookkeepingCategories.find(c => c.type === 'KAS_KELUAR');
+                              setEntryCategory(firstCat ? firstCat.name : 'Belanja Bahan Baku');
+                              const now = new Date();
+                              setEntryDate(now.toISOString().slice(0, 10));
+                              setEntryTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+                              setIsEntryModalOpen(true);
+                            }}
+                            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                          >
+                            <MinusCircle className="w-3.5 h-3.5" />
+                            <span>Catat Kas Keluar Langsung</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 

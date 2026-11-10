@@ -474,14 +474,48 @@ export const ShoppingListManager: React.FC = () => {
   const handleItemCheckboxClick = (item: ShoppingItem) => {
     if (item.status === 'PURCHASED') {
       toggleShoppingItemStatus(item.id, 'PENDING');
+      setArchiveNotice(`Catatan "${item.name}" dikembalikan ke status Rencana Belanja (Pending).`);
+      setTimeout(() => setArchiveNotice(null), 3000);
     } else {
-      // If item does not have actual price yet, prompt for quick realization input!
-      if (item.actualPrice === undefined || item.actualPrice === null) {
+      // If item does not have actual price or estimated price yet, prompt for quick realization input!
+      if (!item.actualPrice && !item.estimatedPrice) {
         handleOpenRealizeModal(item, true);
       } else {
-        toggleShoppingItemStatus(item.id, 'PURCHASED');
+        const price = item.actualPrice || item.estimatedPrice || 0;
+        inputShoppingItemActualPrice(item.id, price, {
+          markAsPurchased: true,
+          recordToExpense: true,
+          paymentMethod: 'TUNAI',
+          shoppingDate: item.shoppingDate || new Date().toISOString().slice(0, 10),
+          archiveToHistory: false,
+        });
+        setArchiveNotice(`✅ "${item.name}" ditandai selesai dibeli (${formatRupiah(price)}) & otomatis dicatat ke Pengeluaran Kas (Belanja Bahan Baku)!`);
+        setTimeout(() => setArchiveNotice(null), 3500);
       }
     }
+  };
+
+  const handleQuickRealizeAllPending = () => {
+    if (pendingItems.length === 0) return;
+    const confirm = window.confirm(
+      `Tandai seluruh ${pendingItems.length} bahan baku ini sebagai selesai dibeli dan otomatis catat ke Buku Kas & Laporan Arus Kas?`
+    );
+    if (!confirm) return;
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    pendingItems.forEach(item => {
+      const price = item.actualPrice || item.estimatedPrice || 0;
+      inputShoppingItemActualPrice(item.id, price, {
+        markAsPurchased: true,
+        recordToExpense: true,
+        paymentMethod: 'TUNAI',
+        shoppingDate: todayStr,
+        archiveToHistory: false,
+      });
+    });
+
+    setArchiveNotice(`✅ ${pendingItems.length} bahan baku berhasil ditandai selesai dibeli & dicatat ke Pengeluaran Kas (Belanja Bahan Baku)!`);
+    setTimeout(() => setArchiveNotice(null), 4000);
   };
 
   // Form Handlers
@@ -1314,6 +1348,36 @@ export const ShoppingListManager: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Pending Items Realization Action Banner */}
+      {activeTab === 'ACTIVE' && pendingItems.length > 0 && (
+        <div className="bg-amber-50/90 border border-amber-300 p-4 rounded-2xl shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs font-bold text-lg">
+              🛒
+            </span>
+            <div>
+              <h3 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2 flex-wrap">
+                <span>{pendingItems.length} Bahan Baku Masih Berstatus Rencana Belanja</span>
+                <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                  Belum Memotong Kas
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-600 mt-0.5">
+                Item ini belum memotong kas warung. Jika bahan-bahan ini sudah dibeli, klik tombol <b>Tandai Selesai Dibeli</b> agar otomatis tercatat sebagai <b>Pengeluaran Kas (Belanja Bahan Baku)</b> di Buku Kas & Laporan Arus Kas.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleQuickRealizeAllPending}
+            className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition shrink-0 cursor-pointer"
+            title="Tandai semua barang pending sebagai selesai dibeli dan otomatis catat ke Buku Kas"
+          >
+            <CheckCircle2 size={16} />
+            <span>Tandai Semua Selesai Dibeli ({pendingItems.length})</span>
+          </button>
+        </div>
+      )}
 
       {/* 3. Search & Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">

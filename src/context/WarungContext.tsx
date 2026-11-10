@@ -301,9 +301,11 @@ export const DEFAULT_BOOKKEEPING_CATEGORIES: BookkeepingCategory[] = [
   { id: 'bkc_in_4', name: 'Top-Up Saldo Deposit', type: 'KAS_MASUK', isSystem: true },
   { id: 'bkc_in_5', name: 'Pengembalian Biaya (Refund)', type: 'KAS_MASUK', isSystem: true },
   // Kas Keluar (Kredit)
+  { id: 'bkc_out_0', name: 'Belanja Bahan Baku', type: 'KAS_KELUAR', isSystem: true },
   { id: 'bkc_out_1', name: 'Prive / Penarikan Pemilik', type: 'KAS_KELUAR', isSystem: true },
   { id: 'bkc_out_2', name: 'Setor Kas ke Bank', type: 'KAS_KELUAR', isSystem: true },
   { id: 'bkc_out_3', name: 'Pembelian Aset / Perlengkapan', type: 'KAS_KELUAR', isSystem: true },
+  { id: 'bkc_out_4', name: 'Sewa Tempat & Bangunan', type: 'KAS_KELUAR', isSystem: true },
   { id: 'bkc_out_5', name: 'Operasional & Listrik', type: 'KAS_KELUAR', isSystem: true },
   { id: 'bkc_out_6', name: 'Gaji & Uang Makan Karyawan', type: 'KAS_KELUAR', isSystem: true },
   { id: 'bkc_out_7', name: 'Pengeluaran Lain-lain', type: 'KAS_KELUAR', isSystem: true },
@@ -459,11 +461,9 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (Array.isArray(parsed) && parsed.length > 0) {
         const defaultMap = new Map(DEFAULT_BOOKKEEPING_CATEGORIES.map(c => [c.name.toLowerCase() + '_' + c.type, c]));
         parsed.forEach(c => {
-          if (!c.name.toLowerCase().includes('bahan baku')) {
-            defaultMap.set(c.name.toLowerCase() + '_' + c.type, c);
-          }
+          defaultMap.set(c.name.toLowerCase() + '_' + c.type, c);
         });
-        return Array.from(defaultMap.values()).filter(c => !c.name.toLowerCase().includes('bahan baku'));
+        return Array.from(defaultMap.values());
       }
       return DEFAULT_BOOKKEEPING_CATEGORIES;
     } catch {
@@ -2681,12 +2681,45 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         if (item.id === id) {
           const nextStatus = newStatus || (item.status === 'PURCHASED' ? 'PENDING' : 'PURCHASED');
           const isNowPurchased = nextStatus === 'PURCHASED';
+          const dateUsed = isNowPurchased ? (item.shoppingDate || new Date().toISOString().slice(0, 10)) : item.shoppingDate;
+          
+          let newExpenseId = item.expenseId;
+          let isRecorded = item.isRecordedToExpense;
+
+          if (isNowPurchased && !isRecorded) {
+            const cost = item.actualPrice || item.estimatedPrice || 0;
+            if (cost > 0) {
+              const newExpense: Expense = {
+                id: 'exp-' + Date.now(),
+                title: `Belanja Bahan: ${item.name} (${item.quantity} ${item.unit || 'item'})`,
+                category: 'Belanja Bahan Baku',
+                amount: cost,
+                paymentMethod: 'TUNAI',
+                timestamp: `${dateUsed}T${new Date().toTimeString().slice(0, 8)}.000Z`,
+                recipient: item.supplierLocation || undefined,
+                cashierName: currentUser?.name || storeSettings.cashierName,
+                notes: item.notes || (item.supplierLocation ? `Dibeli di ${item.supplierLocation}` : undefined),
+              };
+              setExpenses(expList => [newExpense, ...expList]);
+              saveExpenseToFirestore(newExpense);
+              newExpenseId = newExpense.id;
+              isRecorded = true;
+            }
+          } else if (!isNowPurchased && isRecorded && item.expenseId) {
+            setExpenses(expList => expList.filter(e => e.id !== item.expenseId));
+            deleteExpenseFromFirestore(item.expenseId);
+            newExpenseId = undefined;
+            isRecorded = false;
+          }
+
           const updated: ShoppingItem = {
             ...item,
             status: nextStatus,
             purchasedAt: isNowPurchased ? (item.purchasedAt || new Date().toISOString()) : undefined,
             purchasedBy: isNowPurchased ? (currentUser?.name || storeSettings.cashierName) : undefined,
-            shoppingDate: isNowPurchased ? (item.shoppingDate || new Date().toISOString().slice(0, 10)) : item.shoppingDate,
+            shoppingDate: dateUsed,
+            expenseId: newExpenseId,
+            isRecordedToExpense: isRecorded,
           };
           saveShoppingItemToFirestore(updated);
           return updated;
@@ -3286,6 +3319,37 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       });
     });
 
+    // 4b. Purchased Shopping Items Fallback (ensure no purchased materials are missing from cash out)
+    shoppingItems.forEach(s => {
+      if (s.status === 'PURCHASED') {
+        const isAlreadyInExpenses = (s.expenseId && expenses.some(e => e.id === s.expenseId)) ||
+          expenses.some(e => e.id === `exp-shop-${s.id}` || (e.title && e.title.includes(s.name) && Math.abs(e.amount - (s.actualPrice || s.estimatedPrice || 0)) < 1));
+        if (!isAlreadyInExpenses) {
+          const cost = s.actualPrice || s.estimatedPrice || 0;
+          if (cost > 0) {
+            const dateStr = s.shoppingDate || (s.purchasedAt ? s.purchasedAt.slice(0, 10) : new Date().toISOString().slice(0, 10));
+            const timestamp = s.purchasedAt || `${dateStr}T12:00:00.000Z`;
+            rawItems.push({
+              id: `shop-${s.id}`,
+              timestamp,
+              dateStr,
+              type: 'KAS_KELUAR',
+              category: 'Belanja Bahan Baku',
+              title: `Belanja Bahan: ${s.name} (${s.quantity} ${s.unit || 'item'})`,
+              amount: cost,
+              account: 'KAS_TUNAI',
+              accountLabel: 'Kas Tunai (Laci)',
+              referenceType: 'EXPENSE',
+              referenceId: s.id,
+              sourceType: 'OPERATIONAL_EXPENSE',
+              notes: s.notes || (s.supplierLocation ? `Dibeli di ${s.supplierLocation}` : undefined),
+              actorName: s.purchasedBy || 'Kasir',
+            });
+          }
+        }
+      }
+    });
+
     // 5. Manual Journals
     manualJournals.forEach(j => {
       let account: CashAccountType = 'KAS_TUNAI';
@@ -3352,7 +3416,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     // Return in reverse chronological order (newest on top) for table views
     return filtered.reverse();
-  }, [transactions, products, customers, expenses, manualJournals, storeSettings.autoJournalEnabled, storeSettings.autoJournalMode]);
+  }, [transactions, products, customers, expenses, shoppingItems, manualJournals, storeSettings.autoJournalEnabled, storeSettings.autoJournalMode]);
 
   // Calculate Cash Flow Statement (SAK EMKM)
   const calculateCashFlow = useCallback((
@@ -3430,19 +3494,20 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
       } else {
         // KAS KELUAR
-        if (entry.category === 'Belanja Bahan Baku') {
+        const catLower = (entry.category || '').toLowerCase();
+        if (catLower.includes('bahan baku') || catLower.includes('belanja bahan') || catLower.includes('belanja pasar') || catLower.includes('sembako')) {
           operatingOutflows.materials += entry.amount;
-        } else if (entry.category === 'Operasional & Listrik') {
+        } else if (catLower.includes('operasional') || catLower.includes('listrik') || catLower.includes('gas') || catLower.includes('air') || catLower.includes('utilitas')) {
           operatingOutflows.operationalUtilities += entry.amount;
-        } else if (entry.category === 'Sewa Tempat & Bangunan') {
+        } else if (catLower.includes('sewa')) {
           operatingOutflows.rent += entry.amount;
-        } else if (entry.category === 'Gaji & Uang Makan Karyawan') {
+        } else if (catLower.includes('gaji') || catLower.includes('upah') || catLower.includes('uang makan') || catLower.includes('karyawan')) {
           operatingOutflows.salaries += entry.amount;
-        } else if (entry.category === 'Peralatan & Kemasan') {
+        } else if (catLower.includes('kemasan') || catLower.includes('plastik') || catLower.includes('kotak') || catLower.includes('peralatan habis')) {
           operatingOutflows.packaging += entry.amount;
-        } else if (entry.category === 'Prive / Penarikan Pemilik') {
+        } else if (catLower.includes('prive') || catLower.includes('penarikan pemilik')) {
           financingOutflows.ownerDrawingsPrive += entry.amount;
-        } else if (entry.category === 'Pembelian Aset / Alat') {
+        } else if (catLower.includes('aset') || catLower.includes('alat') || catLower.includes('perlengkapan') || catLower.includes('investasi')) {
           investingOutflows.assetsAndEquipment += entry.amount;
         } else {
           operatingOutflows.otherExpenses += entry.amount;
