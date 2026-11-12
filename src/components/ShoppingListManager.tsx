@@ -86,6 +86,8 @@ export const ShoppingListManager: React.FC = () => {
     deleteShoppingItem,
     toggleShoppingItemStatus,
     recordShoppingItemAsExpense,
+    recordAllHistoryShoppingItemsToExpenses,
+    recordSingleHistoryShoppingItemToExpense,
     inputShoppingItemActualPrice,
     archivePurchasedShoppingItems,
     restoreShoppingItemFromArchive,
@@ -427,7 +429,7 @@ export const ShoppingListManager: React.FC = () => {
       const commonDate = purchasedItems.find(s => s.shoppingDate)?.shoppingDate || new Date().toISOString().slice(0, 10);
       setArchiveBatchDate(commonDate);
     }
-    setArchiveRecordToExpense(false);
+    setArchiveRecordToExpense(true);
     setShowArchiveModal(true);
   };
 
@@ -580,7 +582,13 @@ export const ShoppingListManager: React.FC = () => {
         supplierLocation: supplierLocation.trim() || undefined,
         shoppingDate: dateToUse,
         notes: notes.trim() || undefined,
+        status: actAmount && actAmount > 0 ? 'PURCHASED' : undefined,
       });
+
+      if (actAmount && actAmount > 0) {
+        setArchiveNotice(`✅ "${name.trim()}" disimpan & otomatis dicatat ke Pengeluaran Kas (${formatRupiah(actAmount)})!`);
+        setTimeout(() => setArchiveNotice(null), 3500);
+      }
     } else {
       addShoppingItem({
         name: name.trim(),
@@ -592,9 +600,14 @@ export const ShoppingListManager: React.FC = () => {
         priority,
         supplierLocation: supplierLocation.trim() || undefined,
         shoppingDate: dateToUse,
-        status: 'PENDING',
+        status: actAmount && actAmount > 0 ? 'PURCHASED' : 'PENDING',
         notes: notes.trim() || undefined,
       });
+
+      if (actAmount && actAmount > 0) {
+        setArchiveNotice(`✅ "${name.trim()}" ditambahkan & otomatis dicatat ke Pengeluaran Kas (${formatRupiah(actAmount)})!`);
+        setTimeout(() => setArchiveNotice(null), 3500);
+      }
     }
 
     setShowModal(false);
@@ -1960,6 +1973,38 @@ export const ShoppingListManager: React.FC = () => {
             </div>
           </div>
 
+          {/* Quick Bulk Sync to Cash Banner */}
+          {archivedShoppingItems.some(s => !s.isRecordedToExpense) && (
+            <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-teal-500/15 border border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-start gap-3">
+                <span className="p-2.5 rounded-xl bg-amber-500 text-white shrink-0 shadow-xs">
+                  <DollarSign size={20} />
+                </span>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <span>{archivedShoppingItems.filter(s => !s.isRecordedToExpense).length} Barang di Riwayat Belanja Belum Masuk Buku Kas</span>
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">Perhatian</span>
+                  </h4>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Masukkan barang belanjaan riwayat ini ke pengeluaran kas agar tercatat pada Laporan Arus Kas (Pembayaran Belanja Bahan Baku) dan Buku Kas.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const res = recordAllHistoryShoppingItemsToExpenses();
+                  setArchiveNotice(`✅ Berhasil memasukkan ${res.count} barang riwayat belanja ke Pengeluaran Kas (Total: ${formatRupiah(res.totalAmount)})!`);
+                  setTimeout(() => setArchiveNotice(null), 4000);
+                }}
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition shadow-xs cursor-pointer shrink-0"
+              >
+                <DollarSign size={16} />
+                <span>Masukkan Semua ke Pengeluaran Kas</span>
+              </button>
+            </div>
+          )}
+
           {/* History Search & Filter Bar */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
             {/* Row 1: Date Presets & Custom Date Picker */}
@@ -2168,6 +2213,28 @@ export const ShoppingListManager: React.FC = () => {
 
                       {/* Session Actions */}
                       <div className="flex items-center gap-2 self-end sm:self-center">
+                        {unrecordedCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              let count = 0;
+                              sessionItems.forEach(item => {
+                                if (!item.isRecordedToExpense) {
+                                  recordSingleHistoryShoppingItemToExpense(item.id);
+                                  count++;
+                                }
+                              });
+                              setArchiveNotice(`✅ Berhasil memasukkan ${count} barang sesi ini ke Pengeluaran Kas!`);
+                              setTimeout(() => setArchiveNotice(null), 3500);
+                            }}
+                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                            title="Masukkan semua barang sesi ini ke Pengeluaran Kas"
+                          >
+                            <DollarSign size={13} />
+                            <span>+ Masukkan Kas ({unrecordedCount})</span>
+                          </button>
+                        )}
+
                         <button
                           onClick={() => handleSendSessionWhatsAppRecap(dateKey, sessionItems)}
                           className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
@@ -2269,10 +2336,17 @@ export const ShoppingListManager: React.FC = () => {
                                     </span>
                                   ) : (
                                     <button
-                                      onClick={() => handleOpenRecordExpense(item)}
-                                      className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-[10px] font-bold hover:bg-blue-100 transition inline-block cursor-pointer"
+                                      type="button"
+                                      onClick={() => {
+                                        recordSingleHistoryShoppingItemToExpense(item.id);
+                                        setArchiveNotice(`✅ "${item.name}" berhasil dimasukkan ke Pengeluaran Kas!`);
+                                        setTimeout(() => setArchiveNotice(null), 3000);
+                                      }}
+                                      className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition inline-flex items-center gap-1 shadow-2xs cursor-pointer"
+                                      title="Langsung masukkan ke Pengeluaran Kas"
                                     >
-                                      + Masukkan Kas
+                                      <DollarSign size={11} />
+                                      <span>+ Masukkan Kas</span>
                                     </button>
                                   )}
                                 </td>
@@ -2386,10 +2460,17 @@ export const ShoppingListManager: React.FC = () => {
                               </span>
                             ) : (
                               <button
-                                onClick={() => handleOpenRecordExpense(item)}
-                                className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-[10px] font-bold hover:bg-blue-100 transition inline-block cursor-pointer"
+                                type="button"
+                                onClick={() => {
+                                  recordSingleHistoryShoppingItemToExpense(item.id);
+                                  setArchiveNotice(`✅ "${item.name}" berhasil dimasukkan ke Pengeluaran Kas!`);
+                                  setTimeout(() => setArchiveNotice(null), 3000);
+                                }}
+                                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition inline-flex items-center gap-1 shadow-2xs cursor-pointer"
+                                title="Langsung masukkan ke Pengeluaran Kas"
                               >
-                                + Catat Kas
+                                <DollarSign size={11} />
+                                <span>+ Catat Kas</span>
                               </button>
                             )}
                           </td>
@@ -3001,7 +3082,9 @@ export const ShoppingListManager: React.FC = () => {
                         className="w-full pl-9 pr-3 py-2 bg-white border border-emerald-300 rounded-xl text-xs font-mono font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500"
                       />
                     </div>
-                    <p className="text-[10px] text-emerald-600 font-medium mt-1">Harga riil nota/struk belanja pasar</p>
+                    <p className="text-[10px] text-emerald-700 font-medium mt-1 flex items-center gap-1">
+                      <span>⚡ Otomatis dibukukan ke Pengeluaran Kas (Belanja Bahan Baku)</span>
+                    </p>
                   </div>
                 </div>
               </div>

@@ -145,6 +145,8 @@ interface WarungContextType {
     }
   ) => void;
   archivePurchasedShoppingItems: (targetShoppingDate?: string, itemIds?: string[]) => { success: boolean; count: number };
+  recordAllHistoryShoppingItemsToExpenses: (targetShoppingDate?: string) => { success: boolean; count: number; totalAmount: number };
+  recordSingleHistoryShoppingItemToExpense: (itemId: string, customAmount?: number, paymentMethod?: 'TUNAI' | 'TRANSFER') => { success: boolean; message: string };
   restoreShoppingItemFromArchive: (id: string) => void;
   restoreShoppingSession: (shoppingDate: string) => void;
 
@@ -2643,13 +2645,47 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   // Shopping Items CRUD
   const addShoppingItem = useCallback((itemData: Omit<ShoppingItem, 'id' | 'createdAt'>): ShoppingItem => {
+    const shoppingDate = itemData.shoppingDate || new Date().toISOString().slice(0, 10);
+    const hasActualPrice = itemData.actualPrice !== undefined && itemData.actualPrice !== null && itemData.actualPrice > 0;
+    
+    let expenseId = itemData.expenseId;
+    let isRecorded = itemData.isRecordedToExpense || false;
+    let status = itemData.status || (hasActualPrice ? 'PURCHASED' : 'PENDING');
+
+    // Otomatis masukkan ke Pengeluaran Kas setelah harga realisasi di-input
+    if (hasActualPrice) {
+      status = 'PURCHASED';
+      isRecorded = true;
+      const newExpenseId = 'exp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+      const newExpense: Expense = {
+        id: newExpenseId,
+        title: `Belanja Bahan: ${itemData.name} (${itemData.quantity} ${itemData.unit || 'item'})`,
+        category: 'Belanja Bahan Baku',
+        amount: itemData.actualPrice!,
+        paymentMethod: 'TUNAI',
+        timestamp: `${shoppingDate}T${new Date().toISOString().slice(11, 19)}.000Z`,
+        recipient: itemData.supplierLocation || undefined,
+        cashierName: currentUser?.name || storeSettings.cashierName,
+        notes: itemData.supplierLocation
+          ? `Dibeli di ${itemData.supplierLocation}. Tanggal: ${shoppingDate}. Realisasi: Rp ${itemData.actualPrice!.toLocaleString('id-ID')}. ${itemData.notes || ''}`
+          : `Tanggal: ${shoppingDate}. Realisasi: Rp ${itemData.actualPrice!.toLocaleString('id-ID')}. ${itemData.notes || ''}`,
+      };
+      setExpenses(expList => [newExpense, ...expList]);
+      saveExpenseToFirestore(newExpense);
+      expenseId = newExpenseId;
+    }
+
     const newItem: ShoppingItem = {
       ...itemData,
       id: 'shop-' + Date.now(),
       createdAt: new Date().toISOString(),
-      shoppingDate: itemData.shoppingDate || new Date().toISOString().slice(0, 10),
+      shoppingDate,
       isArchived: itemData.isArchived || false,
-      status: itemData.status || 'PENDING',
+      status,
+      isRecordedToExpense: isRecorded,
+      expenseId,
+      purchasedAt: status === 'PURCHASED' ? new Date().toISOString() : undefined,
+      purchasedBy: status === 'PURCHASED' ? (currentUser?.name || storeSettings.cashierName) : undefined,
       createdBy: currentUser?.name || storeSettings.cashierName,
     };
     setShoppingItems(prev => [newItem, ...prev]);
@@ -2661,14 +2697,66 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setShoppingItems(prev =>
       prev.map(item => {
         if (item.id === id) {
-          const updated = { ...item, ...updatedData };
+          const finalActualPrice = updatedData.actualPrice !== undefined ? updatedData.actualPrice : item.actualPrice;
+          const finalShoppingDate = updatedData.shoppingDate || item.shoppingDate || new Date().toISOString().slice(0, 10);
+          
+          let finalExpenseId = updatedData.expenseId !== undefined ? updatedData.expenseId : item.expenseId;
+          let finalIsRecorded = updatedData.isRecordedToExpense !== undefined ? updatedData.isRecordedToExpense : item.isRecordedToExpense;
+          let finalStatus = updatedData.status || item.status;
+
+          // Otomatis masukkan ke Pengeluaran Kas setelah harga realisasi di-input
+          if (finalActualPrice !== undefined && finalActualPrice !== null && finalActualPrice > 0) {
+            finalStatus = 'PURCHASED';
+            finalIsRecorded = true;
+            
+            const existingExpense = finalExpenseId ? expenses.find(e => e.id === finalExpenseId) : undefined;
+            if (existingExpense) {
+              updateExpense(existingExpense.id, {
+                amount: finalActualPrice,
+                title: `Belanja Bahan: ${updatedData.name || item.name} (${updatedData.quantity || item.quantity} ${updatedData.unit || item.unit || 'item'})`,
+                category: 'Belanja Bahan Baku',
+                notes: (updatedData.supplierLocation || item.supplierLocation)
+                  ? `Dibeli di ${updatedData.supplierLocation || item.supplierLocation}. Tanggal: ${finalShoppingDate}. Realisasi: Rp ${finalActualPrice.toLocaleString('id-ID')}. ${updatedData.notes || item.notes || ''}`
+                  : `Tanggal: ${finalShoppingDate}. Realisasi: Rp ${finalActualPrice.toLocaleString('id-ID')}. ${updatedData.notes || item.notes || ''}`,
+              });
+            } else {
+              const newExpenseId = 'exp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+              const newExpense: Expense = {
+                id: newExpenseId,
+                title: `Belanja Bahan: ${updatedData.name || item.name} (${updatedData.quantity || item.quantity} ${updatedData.unit || item.unit || 'item'})`,
+                category: 'Belanja Bahan Baku',
+                amount: finalActualPrice,
+                paymentMethod: 'TUNAI',
+                timestamp: `${finalShoppingDate}T${new Date().toISOString().slice(11, 19)}.000Z`,
+                recipient: updatedData.supplierLocation || item.supplierLocation || undefined,
+                cashierName: currentUser?.name || storeSettings.cashierName,
+                notes: (updatedData.supplierLocation || item.supplierLocation)
+                  ? `Dibeli di ${updatedData.supplierLocation || item.supplierLocation}. Tanggal: ${finalShoppingDate}. Realisasi: Rp ${finalActualPrice.toLocaleString('id-ID')}. ${updatedData.notes || item.notes || ''}`
+                  : `Tanggal: ${finalShoppingDate}. Realisasi: Rp ${finalActualPrice.toLocaleString('id-ID')}. ${updatedData.notes || item.notes || ''}`,
+              };
+              setExpenses(expList => [newExpense, ...expList]);
+              saveExpenseToFirestore(newExpense);
+              finalExpenseId = newExpenseId;
+            }
+          }
+
+          const updated: ShoppingItem = {
+            ...item,
+            ...updatedData,
+            actualPrice: finalActualPrice,
+            status: finalStatus,
+            isRecordedToExpense: finalIsRecorded,
+            expenseId: finalExpenseId,
+            purchasedAt: finalStatus === 'PURCHASED' ? (item.purchasedAt || new Date().toISOString()) : item.purchasedAt,
+            purchasedBy: finalStatus === 'PURCHASED' ? (item.purchasedBy || currentUser?.name || storeSettings.cashierName) : item.purchasedBy,
+          };
           saveShoppingItemToFirestore(updated);
           return updated;
         }
         return item;
       })
     );
-  }, []);
+  }, [expenses, currentUser, storeSettings, updateExpense]);
 
   const deleteShoppingItem = useCallback((id: string) => {
     setShoppingItems(prev => prev.filter(item => item.id !== id));
@@ -2797,27 +2885,37 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     let newExpenseId = targetItem.expenseId;
 
-    if (shouldRecordExpense && !targetItem.isRecordedToExpense) {
-      const expenseDesc = `Belanja Bahan: ${targetItem.name} (${targetItem.quantity} ${targetItem.unit || 'item'})`;
-      const newExpense: Expense = {
-        id: 'exp-' + Date.now(),
-        title: expenseDesc,
-        category: 'Belanja Bahan Baku',
-        amount: actualPrice,
-        paymentMethod: payMethod === 'TRANSFER' ? 'TRANSFER' : 'TUNAI',
-        timestamp: `${dateUsed}T${new Date().toTimeString().slice(0, 8)}.000Z`,
-        recipient: targetItem.supplierLocation || undefined,
-        cashierName: currentUser?.name || storeSettings.cashierName,
-        notes: targetItem.supplierLocation ? `Dibeli di ${targetItem.supplierLocation}. Tanggal: ${dateUsed}. Realisasi: Rp ${actualPrice.toLocaleString('id-ID')}. ${targetItem.notes || ''}` : `Tanggal: ${dateUsed}. Realisasi: Rp ${actualPrice.toLocaleString('id-ID')}. ${targetItem.notes || ''}`,
-      };
+    if (shouldRecordExpense && actualPrice > 0) {
+      const existingExpense = targetItem.expenseId ? expenses.find(e => e.id === targetItem.expenseId) : undefined;
+      if (existingExpense) {
+        updateExpense(existingExpense.id, {
+          amount: actualPrice,
+          category: 'Belanja Bahan Baku',
+          paymentMethod: payMethod === 'TRANSFER' ? 'TRANSFER' : 'TUNAI',
+          notes: targetItem.supplierLocation
+            ? `Dibeli di ${targetItem.supplierLocation}. Tanggal: ${dateUsed}. Realisasi: Rp ${actualPrice.toLocaleString('id-ID')}. ${targetItem.notes || ''}`
+            : `Tanggal: ${dateUsed}. Realisasi: Rp ${actualPrice.toLocaleString('id-ID')}. ${targetItem.notes || ''}`,
+        });
+      } else {
+        const expenseDesc = `Belanja Bahan: ${targetItem.name} (${targetItem.quantity} ${targetItem.unit || 'item'})`;
+        const newExpense: Expense = {
+          id: 'exp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+          title: expenseDesc,
+          category: 'Belanja Bahan Baku',
+          amount: actualPrice,
+          paymentMethod: payMethod === 'TRANSFER' ? 'TRANSFER' : 'TUNAI',
+          timestamp: `${dateUsed}T${new Date().toISOString().slice(11, 19)}.000Z`,
+          recipient: targetItem.supplierLocation || undefined,
+          cashierName: currentUser?.name || storeSettings.cashierName,
+          notes: targetItem.supplierLocation
+            ? `Dibeli di ${targetItem.supplierLocation}. Tanggal: ${dateUsed}. Realisasi: Rp ${actualPrice.toLocaleString('id-ID')}. ${targetItem.notes || ''}`
+            : `Tanggal: ${dateUsed}. Realisasi: Rp ${actualPrice.toLocaleString('id-ID')}. ${targetItem.notes || ''}`,
+        };
 
-      setExpenses(prev => [newExpense, ...prev]);
-      saveExpenseToFirestore(newExpense);
-      newExpenseId = newExpense.id;
-    } else if (targetItem.isRecordedToExpense && targetItem.expenseId) {
-      updateExpense(targetItem.expenseId, {
-        amount: actualPrice,
-      });
+        setExpenses(prev => [newExpense, ...prev]);
+        saveExpenseToFirestore(newExpense);
+        newExpenseId = newExpense.id;
+      }
     }
 
     const updatedShopping: ShoppingItem = {
@@ -2827,7 +2925,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       status: shouldMarkPurchased ? 'PURCHASED' : targetItem.status,
       purchasedAt: shouldMarkPurchased ? (targetItem.purchasedAt || new Date().toISOString()) : targetItem.purchasedAt,
       purchasedBy: shouldMarkPurchased ? (targetItem.purchasedBy || currentUser?.name || storeSettings.cashierName) : targetItem.purchasedBy,
-      isRecordedToExpense: shouldRecordExpense ? true : targetItem.isRecordedToExpense,
+      isRecordedToExpense: shouldRecordExpense && actualPrice > 0 ? true : targetItem.isRecordedToExpense,
       expenseId: newExpenseId,
       isArchived: shouldArchive ? true : targetItem.isArchived,
     };
@@ -2836,7 +2934,7 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       prev.map(s => s.id === itemId ? updatedShopping : s)
     );
     saveShoppingItemToFirestore(updatedShopping);
-  }, [shoppingItems, currentUser, storeSettings, updateExpense]);
+  }, [shoppingItems, expenses, currentUser, storeSettings, updateExpense]);
 
   const archivePurchasedShoppingItems = useCallback((targetShoppingDate?: string, itemIds?: string[]): { success: boolean; count: number } => {
     const purchasedToArchive = shoppingItems.filter(s =>
@@ -2857,12 +2955,40 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           : s.status === 'PURCHASED' && !s.isArchived;
 
         if (shouldArchive) {
+          const finalDate = targetShoppingDate || s.shoppingDate || (s.purchasedAt ? s.purchasedAt.slice(0, 10) : archiveDate);
+          let newExpenseId = s.expenseId;
+          let isRecorded = s.isRecordedToExpense;
+
+          // Automatically record to expenses if not already recorded
+          if (!isRecorded) {
+            const cost = s.actualPrice || s.estimatedPrice || 0;
+            if (cost > 0) {
+              const newExpense: Expense = {
+                id: 'exp-' + Date.now() + '-' + s.id,
+                title: `Belanja Bahan: ${s.name} (${s.quantity} ${s.unit || 'item'})`,
+                category: 'Belanja Bahan Baku',
+                amount: cost,
+                paymentMethod: 'TUNAI',
+                timestamp: s.purchasedAt || `${finalDate}T12:00:00.000Z`,
+                recipient: s.supplierLocation || undefined,
+                cashierName: s.purchasedBy || currentUser?.name || storeSettings.cashierName,
+                notes: s.notes || (s.supplierLocation ? `Dibeli di ${s.supplierLocation}` : undefined),
+              };
+              setExpenses(expList => [newExpense, ...expList]);
+              saveExpenseToFirestore(newExpense);
+              newExpenseId = newExpense.id;
+              isRecorded = true;
+            }
+          }
+
           const up: ShoppingItem = {
             ...s,
             status: 'PURCHASED',
             isArchived: true,
-            shoppingDate: targetShoppingDate || s.shoppingDate || (s.purchasedAt ? s.purchasedAt.slice(0, 10) : archiveDate),
+            shoppingDate: finalDate,
             purchasedAt: s.purchasedAt || new Date().toISOString(),
+            expenseId: newExpenseId,
+            isRecordedToExpense: isRecorded,
           };
           saveShoppingItemToFirestore(up);
           return up;
@@ -2873,7 +2999,167 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
 
     return { success: true, count: purchasedToArchive.length };
-  }, [shoppingItems]);
+  }, [shoppingItems, currentUser, storeSettings]);
+
+  // Record ALL unrecorded items in shopping history into cash expenses
+  const recordAllHistoryShoppingItemsToExpenses = useCallback((targetShoppingDate?: string): { success: boolean; count: number; totalAmount: number } => {
+    // Find all items in history or items that have actual price inputted
+    const candidates = shoppingItems.filter(s => {
+      const isHistoryOrHasActual = s.isArchived || s.status === 'PURCHASED' || (s.actualPrice !== undefined && s.actualPrice !== null && s.actualPrice > 0);
+      if (!isHistoryOrHasActual) return false;
+      if (targetShoppingDate && s.shoppingDate !== targetShoppingDate) return false;
+      return true;
+    });
+
+    if (candidates.length === 0) {
+      return { success: false, count: 0, totalAmount: 0 };
+    }
+
+    let recordedCount = 0;
+    let sumAmount = 0;
+    const updatedShoppingItemsMap = new Map<string, ShoppingItem>();
+
+    setExpenses(prevExpenses => {
+      const existingExpenseIds = new Set(prevExpenses.map(e => e.id));
+      const newExpenses: Expense[] = [];
+
+      candidates.forEach(s => {
+        const cost = s.actualPrice || s.estimatedPrice || 0;
+        if (cost <= 0) return;
+
+        // Check if already in expenses
+        if (s.expenseId && existingExpenseIds.has(s.expenseId)) {
+          if (!s.isRecordedToExpense) {
+            updatedShoppingItemsMap.set(s.id, { ...s, isRecordedToExpense: true });
+          }
+          return;
+        }
+
+        const expenseDate = s.shoppingDate || (s.purchasedAt ? s.purchasedAt.slice(0, 10) : new Date().toISOString().slice(0, 10));
+        
+        // Check if an expense with the exact name, amount and date exists already
+        const matchingExpense = prevExpenses.find(e =>
+          e.category === 'Belanja Bahan Baku' &&
+          e.title.includes(s.name) &&
+          Math.abs(e.amount - cost) < 1 &&
+          e.timestamp.startsWith(expenseDate)
+        );
+
+        if (matchingExpense) {
+          updatedShoppingItemsMap.set(s.id, { ...s, isRecordedToExpense: true, expenseId: matchingExpense.id });
+          return;
+        }
+
+        const expenseId = 'exp-hist-' + s.id + '-' + Date.now();
+        const newExp: Expense = {
+          id: expenseId,
+          title: `Belanja Bahan: ${s.name} (${s.quantity} ${s.unit || 'item'})`,
+          category: 'Belanja Bahan Baku',
+          amount: cost,
+          paymentMethod: 'TUNAI',
+          timestamp: s.purchasedAt || `${expenseDate}T12:00:00.000Z`,
+          recipient: s.supplierLocation || undefined,
+          cashierName: s.purchasedBy || currentUser?.name || storeSettings.cashierName,
+          notes: s.notes || (s.supplierLocation ? `Dibeli di ${s.supplierLocation}` : undefined),
+        };
+
+        newExpenses.push(newExp);
+        existingExpenseIds.add(expenseId);
+        saveExpenseToFirestore(newExp);
+
+        updatedShoppingItemsMap.set(s.id, {
+          ...s,
+          isRecordedToExpense: true,
+          expenseId: expenseId,
+          status: 'PURCHASED',
+        });
+
+        recordedCount++;
+        sumAmount += cost;
+      });
+
+      return [...newExpenses, ...prevExpenses];
+    });
+
+    if (updatedShoppingItemsMap.size > 0) {
+      setShoppingItems(prev =>
+        prev.map(s => {
+          if (updatedShoppingItemsMap.has(s.id)) {
+            const up = updatedShoppingItemsMap.get(s.id)!;
+            saveShoppingItemToFirestore(up);
+            return up;
+          }
+          return s;
+        })
+      );
+    }
+
+    return { success: true, count: recordedCount, totalAmount: sumAmount };
+  }, [shoppingItems, currentUser, storeSettings]);
+
+  // Record a single history item to expense
+  const recordSingleHistoryShoppingItemToExpense = useCallback((
+    itemId: string,
+    customAmount?: number,
+    paymentMethod: 'TUNAI' | 'TRANSFER' = 'TUNAI'
+  ): { success: boolean; message: string } => {
+    const targetItem = shoppingItems.find(s => s.id === itemId);
+    if (!targetItem) {
+      return { success: false, message: 'Item belanja tidak ditemukan.' };
+    }
+
+    const amount = customAmount !== undefined && customAmount > 0 
+      ? customAmount 
+      : (targetItem.actualPrice || targetItem.estimatedPrice || 0);
+
+    if (amount <= 0) {
+      return { success: false, message: 'Nominal belanja belum diisi atau 0.' };
+    }
+
+    const dateUsed = targetItem.shoppingDate || (targetItem.purchasedAt ? targetItem.purchasedAt.slice(0, 10) : new Date().toISOString().slice(0, 10));
+    const newExpense: Expense = {
+      id: 'exp-' + Date.now() + '-' + targetItem.id,
+      title: `Belanja Bahan: ${targetItem.name} (${targetItem.quantity} ${targetItem.unit || 'item'})`,
+      category: 'Belanja Bahan Baku',
+      amount,
+      paymentMethod,
+      timestamp: targetItem.purchasedAt || `${dateUsed}T12:00:00.000Z`,
+      recipient: targetItem.supplierLocation || undefined,
+      cashierName: targetItem.purchasedBy || currentUser?.name || storeSettings.cashierName,
+      notes: targetItem.supplierLocation ? `Dibeli di ${targetItem.supplierLocation}. ${targetItem.notes || ''}` : targetItem.notes,
+    };
+
+    setExpenses(prev => [newExpense, ...prev]);
+    saveExpenseToFirestore(newExpense);
+
+    const updatedShopping: ShoppingItem = {
+      ...targetItem,
+      status: 'PURCHASED',
+      actualPrice: amount,
+      isRecordedToExpense: true,
+      expenseId: newExpense.id,
+    };
+
+    setShoppingItems(prev =>
+      prev.map(s => s.id === itemId ? updatedShopping : s)
+    );
+    saveShoppingItemToFirestore(updatedShopping);
+
+    return { success: true, message: `"${targetItem.name}" berhasil dicatat ke Pengeluaran Kas (${amount.toLocaleString('id-ID')}).` };
+  }, [shoppingItems, currentUser, storeSettings]);
+
+  // Auto-reconciliation: ensure shopping items with actual price or in history are automatically recorded to cash expenses
+  useEffect(() => {
+    if (shoppingItems.length === 0) return;
+    const hasUnrecorded = shoppingItems.some(
+      s => (!s.isRecordedToExpense || !s.expenseId) &&
+        ((s.actualPrice !== undefined && s.actualPrice !== null && s.actualPrice > 0) || s.isArchived || s.status === 'PURCHASED') &&
+        (s.actualPrice || s.estimatedPrice || 0) > 0
+    );
+    if (hasUnrecorded) {
+      recordAllHistoryShoppingItemsToExpenses();
+    }
+  }, [shoppingItems, recordAllHistoryShoppingItemsToExpenses]);
 
   const restoreShoppingItemFromArchive = useCallback((id: string) => {
     setShoppingItems(prev =>
@@ -3986,6 +4272,8 @@ export const WarungProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         recordShoppingItemAsExpense,
         inputShoppingItemActualPrice,
         archivePurchasedShoppingItems,
+        recordAllHistoryShoppingItemsToExpenses,
+        recordSingleHistoryShoppingItemToExpense,
         restoreShoppingItemFromArchive,
         restoreShoppingSession,
         manualJournals,

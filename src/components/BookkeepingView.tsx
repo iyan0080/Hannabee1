@@ -96,11 +96,14 @@ export const BookkeepingView: React.FC = () => {
     getAllJournalEntries,
     calculateCashFlow,
     shoppingItems,
+    recordAllHistoryShoppingItemsToExpenses,
   } = useWarung();
 
   // Active Sub-Tab
   const [activeTab, setActiveTab] = useState<BookkeepingTab>('ledger');
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const pendingShoppingCount = useMemo(() => shoppingItems.filter(s => s.status === 'PENDING' && !s.isArchived).length, [shoppingItems]);
+  const unrecordedHistoryCount = useMemo(() => shoppingItems.filter(s => (s.isArchived || s.status === 'PURCHASED') && !s.isRecordedToExpense).length, [shoppingItems]);
 
   // Filter State for Ledger
   const [periodOption, setPeriodOption] = useState<PeriodOption>('this_month');
@@ -1466,36 +1469,162 @@ export const BookkeepingView: React.FC = () => {
       {activeTab === 'cash_flow' && (
         <div className="space-y-6">
           {/* Controls */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {(['today', '7days', 'this_month', 'last_month', 'custom'] as PeriodOption[]).map(opt => (
-                <button
-                  key={opt}
-                  onClick={() => setPeriodOption(opt)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-                    periodOption === opt
-                      ? 'bg-amber-600 text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {opt === 'today' && 'Hari Ini'}
-                  {opt === '7days' && '7 Hari'}
-                  {opt === 'this_month' && 'Bulan Ini'}
-                  {opt === 'last_month' && 'Bulan Lalu'}
-                  {opt === 'custom' && 'Pilih Tanggal'}
-                </button>
-              ))}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {(['today', '7days', 'this_month', 'last_month', 'custom'] as PeriodOption[]).map(opt => (
+                  <button
+                    key={opt}
+                    onClick={() => setPeriodOption(opt)}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                      periodOption === opt
+                        ? 'bg-amber-600 text-white shadow-2xs font-bold'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {opt === 'today' && 'Hari Ini'}
+                    {opt === '7days' && '7 Hari'}
+                    {opt === 'this_month' && 'Bulan Ini'}
+                    {opt === 'last_month' && 'Bulan Lalu'}
+                    {opt === 'custom' && 'Pilih Tanggal'}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                id="btn-export-pdf-cashflow"
+                onClick={() => exportCashFlowToPDF(cashFlowData, storeSettings)}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 text-xs font-semibold shadow-2xs cursor-pointer self-start md:self-auto"
+              >
+                <Printer className="w-3.5 h-3.5 text-blue-600" />
+                <span>Cetak Laporan Arus Kas (PDF)</span>
+              </button>
             </div>
 
-            <button
-              id="btn-export-pdf-cashflow"
-              onClick={() => exportCashFlowToPDF(cashFlowData, storeSettings)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 text-xs font-semibold shadow-2xs"
-            >
-              <Printer className="w-3.5 h-3.5 text-blue-600" />
-              <span>Cetak Laporan Arus Kas (PDF)</span>
-            </button>
+            {/* Custom Date Picker Section for Cash Flow */}
+            {periodOption === 'custom' && (
+              <div className="pt-3 border-t border-slate-100 space-y-2.5 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-slate-700 font-bold flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Dari Tanggal:</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={customStartDate}
+                        onChange={e => setCustomStartDate(e.target.value)}
+                        className="px-2.5 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500 shadow-2xs cursor-pointer"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-slate-700 font-bold flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Sampai Tanggal:</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={customEndDate}
+                        onChange={e => setCustomEndDate(e.target.value)}
+                        className="px-2.5 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500 shadow-2xs cursor-pointer"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-slate-600 font-medium flex items-center gap-1.5">
+                    <span>Periode Arus Kas:</span>
+                    <span className="font-bold text-amber-900 bg-amber-100/80 px-2.5 py-0.5 rounded-md border border-amber-300 font-mono">
+                      {formatDateOnly(startDate.toISOString())} s/d {formatDateOnly(endDate.toISOString())}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Quick Presets for Custom Date Range */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/60">
+                  <span className="text-[11px] text-slate-500 font-semibold mr-1">Pintasan Periode:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date();
+                      const y = d.getFullYear();
+                      const m = String(d.getMonth() + 1).padStart(2, '0');
+                      const lastDay = new Date(y, d.getMonth() + 1, 0).getDate();
+                      setCustomStartDate(`${y}-${m}-01`);
+                      setCustomEndDate(`${y}-${m}-${String(lastDay).padStart(2, '0')}`);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-semibold border border-slate-200 shadow-2xs transition cursor-pointer"
+                  >
+                    Bulan Ini
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date();
+                      d.setMonth(d.getMonth() - 1);
+                      const y = d.getFullYear();
+                      const m = String(d.getMonth() + 1).padStart(2, '0');
+                      const lastDay = new Date(y, d.getMonth() + 1, 0).getDate();
+                      setCustomStartDate(`${y}-${m}-01`);
+                      setCustomEndDate(`${y}-${m}-${String(lastDay).padStart(2, '0')}`);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 text-[11px] font-bold border border-amber-300 shadow-2xs transition cursor-pointer"
+                  >
+                    Bulan Lalu (Okt 2026)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date();
+                      const y = d.getFullYear();
+                      setCustomStartDate(`${y}-01-01`);
+                      setCustomEndDate(`${y}-12-31`);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-semibold border border-slate-200 shadow-2xs transition cursor-pointer"
+                  >
+                    Tahun 2026 Penuh
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
+
+          {syncNotice && (
+            <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2 shadow-xs">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{syncNotice}</span>
+            </div>
+          )}
+
+          {unrecordedHistoryCount > 0 && (
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-start gap-2.5">
+                <span className="p-2 rounded-lg bg-amber-500 text-white shrink-0">
+                  <DollarSign size={16} />
+                </span>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900">
+                    Ada {unrecordedHistoryCount} Barang Belanja di Riwayat Belanja yang Belum Masuk Kas
+                  </h4>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    Klik tombol untuk memasukkan semua riwayat belanja ke pengeluaran kas (Belanja Bahan Baku) agar muncul di Laporan Arus Kas.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const res = recordAllHistoryShoppingItemsToExpenses();
+                  setSyncNotice(`✅ Berhasil memasukkan ${res.count} barang riwayat belanja ke Pengeluaran Kas (Total: ${formatRupiah(res.totalAmount)})!`);
+                  setTimeout(() => setSyncNotice(null), 5000);
+                }}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-2xs cursor-pointer shrink-0"
+              >
+                <DollarSign size={14} />
+                <span>Masukkan ke Kas Sekarang</span>
+              </button>
+            </div>
+          )}
 
           {/* Cash Flow Statement Sheet */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
@@ -1592,11 +1721,28 @@ export const BookkeepingView: React.FC = () => {
                         </div>
                         <p className="text-slate-600 text-[11px] leading-relaxed">
                           Pengeluaran kas operasional tercatat <b>(Rp 0)</b> karena belum ada transaksi kas keluar yang dibukukan untuk periode ini.
+                          {unrecordedHistoryCount > 0 && (
+                            <> Ditemukan <b>{unrecordedHistoryCount} barang di Riwayat Belanja</b> yang belum dimasukkan ke Pengeluaran Kas.</>
+                          )}
                           {pendingShoppingCount > 0 && (
-                            <> Saat ini ada <b>{pendingShoppingCount} item di Catatan Belanja Bahan</b> yang masih berstatus <i>Rencana Belanja (Pending)</i> sehingga belum memotong kas.</>
+                            <> Ada juga <b>{pendingShoppingCount} item di Catatan Belanja Bahan</b> yang masih berstatus <i>Rencana Belanja (Pending)</i>.</>
                           )}
                         </p>
                         <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                          {unrecordedHistoryCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const res = recordAllHistoryShoppingItemsToExpenses();
+                                setSyncNotice(`✅ Berhasil memasukkan ${res.count} barang riwayat belanja ke Pengeluaran Kas (Total: ${formatRupiah(res.totalAmount)})! Laporan Arus Kas kini terisi.`);
+                                setTimeout(() => setSyncNotice(null), 5000);
+                              }}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <DollarSign className="w-3.5 h-3.5" />
+                              <span>Masukkan {unrecordedHistoryCount} Barang Belanja ke Kas Sekarang</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
